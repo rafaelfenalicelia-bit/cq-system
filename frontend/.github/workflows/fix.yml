@@ -1,0 +1,19 @@
+name: Fix HTML
+on:
+  push:
+    paths:
+      - 'fix.py'
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run fix script
+        run: python fix.py
+      - name: Commit result
+        run: |
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+          git add frontend/index.html
+          git commit -m "HTML corrigido automaticamente" || echo "Nada para commitar"
+          git push
