@@ -350,6 +350,7 @@ tfoot td{background:#f0efe8;font-weight:700;font-size:11px;padding:7px 9px;borde
     <div class="ni" id="n-for" onclick="nav('for',this)"><i class="ti ti-building-store"></i>Fornecedores</div>
     <div class="ni" id="n-usr" onclick="nav('usr',this)"><i class="ti ti-users"></i>Usuários</div>
     <div class="ni" id="n-cfg" onclick="nav('cfg',this)"><i class="ti ti-settings"></i>Configurações</div>
+    <div class="ni" id="n-exc" onclick="nav('exc',this)"><i class="ti ti-trash"></i>Exclusões de laudo</div>
     <div style="flex:1"></div>
     <div style="padding:7px 4px;border-top:1px solid var(--bd)"><div class="ni" onclick="doLogout()"><i class="ti ti-logout"></i>Sair</div></div>
   </div>
@@ -682,6 +683,16 @@ tfoot td{background:#f0efe8;font-weight:700;font-size:11px;padding:7px 9px;borde
   </div>
 </div>
 
+<!-- EXCLUSÕES DE LAUDO -->
+<div id="page-exc" class="page">
+  <div class="card">
+    <div class="ch"><h2>Histórico de exclusões de laudo</h2></div>
+    <table><thead><tr><th style="width:80px">Laudo</th><th>Ponto</th><th style="width:100px">Data/Hora</th><th>Motivo</th><th style="width:140px">Excluído por</th><th style="width:150px">Excluído em</th></tr></thead>
+    <tbody id="exc-body"></tbody></table>
+    <div id="exc-empty" class="empty" style="display:none;padding:20px;text-align:center">Nenhum laudo excluído até o momento.</div>
+  </div>
+</div>
+
     </div>
   </div>
 </div>
@@ -776,6 +787,20 @@ tfoot td{background:#f0efe8;font-weight:700;font-size:11px;padding:7px 9px;borde
     <div id="m-edit-excluir-info" style="font-size:10px;color:#854F0B;margin-top:5px"></div>
   </div>
   <div class="mac"><button class="btn" onclick="closeM('m-edit')">Cancelar</button><button class="btn btn-p" onclick="saveEdit()"><i class="ti ti-device-floppy"></i> Salvar correção</button></div>
+  <div id="m-edit-excluir-laudo-box" style="display:none;margin-top:14px;border-top:1px solid var(--bd);padding-top:12px">
+    <button class="btn" style="color:#A32D2D;border-color:#E2A0A0" onclick="abrirExclusaoLaudo()"><i class="ti ti-trash"></i> Excluir laudo definitivamente</button>
+  </div>
+</div></div>
+
+<!-- MODAL EXCLUIR LAUDO -->
+<div class="mw" id="m-excluir-laudo"><div class="modal">
+  <h3><i class="ti ti-alert-triangle" style="color:#A32D2D"></i> Excluir laudo</h3>
+  <div id="m-excluir-laudo-info" style="background:#FCEBEB;border:1px solid #E2A0A0;border-radius:7px;padding:8px 12px;font-size:12px;margin-bottom:12px;color:#A32D2D;font-weight:600"></div>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Esta ação remove o laudo permanentemente de todos os relatórios, histórico, BI e dashboard. Não pode ser desfeita pela tela do sistema.</p>
+  <div class="fg"><label>Motivo da exclusão *</label><textarea id="excl-motivo" rows="2" placeholder="Ex: lançamento duplicado, amostra inválida..."></textarea></div>
+  <div class="fg"><label>Sua senha (Administrador) *</label><input type="password" id="excl-senha" placeholder="Confirme sua senha"></div>
+  <div id="excl-erro" style="display:none;color:#A32D2D;font-size:11px;margin-bottom:8px"></div>
+  <div class="mac"><button class="btn" onclick="closeM('m-excluir-laudo')">Cancelar</button><button class="btn" style="background:#A32D2D;color:#fff;border-color:#A32D2D" onclick="confirmarExclusaoLaudo()"><i class="ti ti-trash"></i> Confirmar exclusão</button></div>
 </div></div>
 
 <!-- MODAL HISTÓRICO DE PADRÕES -->
@@ -802,9 +827,9 @@ var DB={
   config:{empresa:"Célia Alimentos Ltda",cnpj:"03.014.374/0001-54",logo:CELIA_LOGO,fabricantePadrao:"Célia Alimentos",metaVR:85},
   unidades:[{id:1,cod:"001",nome:"Célia Alimentos Ltda - Meleiro/SC"},{id:14,cod:"014",nome:"Célia Alimentos Ltda - Osório/RS"}],
   usuarios:[
-    {id:1,nome:"Administrador",login:"admin",senha:"123",perfil:"admin",unidades:[1,2],assinatura:null},
+    {id:1,nome:"Administrador",login:"admin",senha:"123",perfil:"admin",unidades:[1,14],assinatura:null},
     {id:2,nome:"Carlos Analista",login:"analista",senha:"123",perfil:"analista",unidades:[1],assinatura:null},
-    {id:3,nome:"Gerente Geral",login:"geral",senha:"123",perfil:"geral",unidades:[1,2],assinatura:null},
+    {id:3,nome:"Gerente Geral",login:"geral",senha:"123",perfil:"geral",unidades:[1,14],assinatura:null},
     {id:4,nome:"Operador Produção",login:"producao",senha:"prod123",perfil:"producao",unidades:[1],assinatura:null},
     {id:5,nome:"Dashboard Produção",login:"producao1",senha:"senha123",perfil:"producao",unidades:[1],assinatura:null}
   ],
@@ -813,7 +838,7 @@ var DB={
   pontoAnalises:SEED.pontoAnalises,
   fornecedores:[{id:1,nome:"Célia Alimentos",cnpj:"03.014.374/0001-54"}],
   coletas:SEED.coletas,
-  nextIds:{analise:50,ponto:20,forn:2,user:6,coleta:SEED.nextCid,unidade:3},
+  nextIds:{analise:50,ponto:20,forn:2,user:6,coleta:SEED.nextCid,unidade:15},
   laudoSeq:SEED.laudoSeq,
   vrPontoOrder:[]
 };
@@ -864,6 +889,60 @@ window.addEventListener('DOMContentLoaded', function() {
   });
 });
 /* ===== FIM INTEGRAÇÃO ===== */
+
+/* ===== EXCLUSÃO DE LAUDO (ADMIN) ===== */
+function obterColetaEmEdicao(){
+  var la=document.getElementById('c-laudo');
+  var id=parseInt(la&&la.getAttribute?la.getAttribute('data-edit-id'):0,10);
+  if(id)return (DB.coletas||[]).find(function(x){return x.id===id;})||null;
+  if(window.__laudoEmEdicaoId)return (DB.coletas||[]).find(function(x){return x.id===window.__laudoEmEdicaoId;})||null;
+  return null;
+}
+function abrirExclusaoLaudo(){
+  if(!SESSION||SESSION.perfil!=='admin')return alert('Apenas administradores podem excluir laudos.');
+  var c=obterColetaEmEdicao();
+  if(!c)return alert('Não foi possível identificar o laudo. Reabra a correção e tente novamente.');
+  window.__laudoParaExcluirId=c.id;
+  var p=(typeof gP==='function')?gP(c.pontoId):null;
+  var info=document.getElementById('m-excluir-laudo-info');
+  if(info)info.textContent='Laudo '+c.laudoNum+' | '+(p?(p.num+' — '+p.nome):'—')+' | '+c.data+' '+c.hora;
+  var motivoEl=document.getElementById('excl-motivo'); if(motivoEl)motivoEl.value='';
+  var senhaEl=document.getElementById('excl-senha'); if(senhaEl)senhaEl.value='';
+  var erroEl=document.getElementById('excl-erro'); if(erroEl){erroEl.style.display='none';erroEl.textContent='';}
+  openM('m-excluir-laudo');
+}
+function confirmarExclusaoLaudo(){
+  var erroEl=document.getElementById('excl-erro');
+  function mostrarErro(msg){ if(erroEl){erroEl.textContent=msg;erroEl.style.display='block';} else alert(msg); }
+  if(!SESSION||SESSION.perfil!=='admin')return mostrarErro('Apenas administradores podem excluir laudos.');
+  var cid=window.__laudoParaExcluirId;
+  var c=(DB.coletas||[]).find(function(x){return x.id===cid;});
+  if(!c)return mostrarErro('Laudo não encontrado.');
+  var motivo=(document.getElementById('excl-motivo').value||'').trim();
+  var senha=document.getElementById('excl-senha').value||'';
+  if(!motivo)return mostrarErro('Informe o motivo da exclusão.');
+  if(senha!==SESSION.senha)return mostrarErro('Senha incorreta.');
+  apiPost('/api/coletas/'+cid+'/excluir', {motivo:motivo, excluidoPor:SESSION.nome}).then(function(resp){
+    if(resp&&resp.error)return mostrarErro(resp.error);
+    DB.coletas=(DB.coletas||[]).filter(function(x){return x.id!==cid;});
+    closeM('m-excluir-laudo');
+    closeM('m-edit');
+    var box=document.getElementById('cq-admin-vr-box'); if(box)box.style.display='none';
+    document.getElementById('c-laudo').removeAttribute('data-edit-id');
+    document.getElementById('c-laudo').value='';
+    if(window.renders){
+      if(renders.hist)renders.hist();
+      if(renders.dash)renders.dash();
+      if(renders.rel)renders.rel();
+      if(renders.bi)renders.bi();
+    }
+    alert('Laudo excluído com sucesso.');
+  }).catch(function(e){
+    console.error(e);
+    mostrarErro('Erro de conexão ao excluir o laudo.');
+  });
+}
+/* ===== FIM EXCLUSÃO DE LAUDO ===== */
 
 var SESSION=null, editCid=null, indVROnly=false, indCharts=[], vrChart=null;
 var MONTHS=['2026-01','2026-02','2026-03','2026-04','2026-05'];
@@ -977,6 +1056,7 @@ function applyPerms(){
   var isG=SESSION.perfil==='geral';
   ['n-pon','n-ana','n-for','n-usr','n-cfg'].forEach(function(id){document.getElementById(id).classList.toggle('off',!isA);});
   document.getElementById('n-col').classList.toggle('off',isG);
+  var nExc=document.getElementById('n-exc'); if(nExc)nExc.classList.toggle('off',!isA);
 }
 
 // ---- NAV ----
@@ -986,7 +1066,7 @@ function nav(p,el){
   if(el)el.classList.add('on');
   document.querySelectorAll('.page').forEach(function(x){x.classList.remove('on');});
   document.getElementById('page-'+p).classList.add('on');
-  var PI={dash:{t:'Dashboard',s:'Visão geral'},col:{t:'Nova coleta',s:'Registrar amostra'},hist:{t:'Histórico',s:'Todas as coletas'},rel:{t:'Relatório',s:'Análises por ponto'},bi:{t:'BI',s:'Indicadores e VR'},pon:{t:'Pontos de coleta',s:'Cadastro'},ana:{t:'Análises',s:'Tipos disponíveis'},for:{t:'Fornecedores',s:'Cadastro'},usr:{t:'Usuários',s:'Controle de acesso'},cfg:{t:'Configurações',s:'Empresa e unidades'}};
+  var PI={dash:{t:'Dashboard',s:'Visão geral'},col:{t:'Nova coleta',s:'Registrar amostra'},hist:{t:'Histórico',s:'Todas as coletas'},rel:{t:'Relatório',s:'Análises por ponto'},bi:{t:'BI',s:'Indicadores e VR'},pon:{t:'Pontos de coleta',s:'Cadastro'},ana:{t:'Análises',s:'Tipos disponíveis'},for:{t:'Fornecedores',s:'Cadastro'},usr:{t:'Usuários',s:'Controle de acesso'},cfg:{t:'Configurações',s:'Empresa e unidades'},exc:{t:'Exclusões de laudo',s:'Histórico de auditoria'}};
   document.getElementById('pt').textContent=PI[p].t;
   document.getElementById('ps').textContent=PI[p].s;
   document.getElementById('ta').innerHTML='';
@@ -1347,6 +1427,9 @@ function abrirEdit(cid){
     if(mt)mt.value=c.motivoExclusaoIndicadores||'';
     if(info)info.textContent=c.excluirIndicadores===true?('Desconsiderado por '+(c.excluidoIndicadoresPor||'—')+' em '+(c.excluidoIndicadoresEm||'—')):'Esta coleta está participando normalmente dos indicadores.';
   }
+  var delBox=document.getElementById('m-edit-excluir-laudo-box');
+  if(delBox)delBox.style.display=(SESSION&&SESSION.perfil==='admin')?'block':'none';
+  window.__laudoEmEdicaoId=cid;
   cfgs.forEach(function(cfg){chkER(c.pontoId,cfg.analiseId);});
   openM('m-edit');
 }
@@ -1532,6 +1615,28 @@ var renders={
     document.getElementById('cfg-cnpj').value=DB.config.cnpj;
     document.getElementById('cfg-logo').value=DB.config.logo;
     document.getElementById('un-body').innerHTML=DB.unidades.map(function(u){return'<tr><td><span class="bx binfo">'+u.cod+'</span></td><td>'+u.nome+'</td><td><button class="btn btn-d btn-s" onclick="delUn('+u.id+')"><i class="ti ti-trash"></i></button></td></tr>';}).join('');
+  },
+  exc:function(){
+    var tbody=document.getElementById('exc-body');
+    var emptyEl=document.getElementById('exc-empty');
+    if(!tbody)return;
+    tbody.innerHTML='<tr><td colspan="6" class="empty">Carregando...</td></tr>';
+    fetch(API_URL+'/api/coletas/excluidas').then(function(r){return r.json();}).then(function(list){
+      if(!Array.isArray(list)||!list.length){
+        tbody.innerHTML='';
+        if(emptyEl)emptyEl.style.display='block';
+        return;
+      }
+      if(emptyEl)emptyEl.style.display='none';
+      tbody.innerHTML=list.map(function(c){
+        var pontoLabel=c.pontoNum!=null?(c.pontoNum+' — '+(c.pontoNome||'—')):(c.pontoNome||'—');
+        var quando=c.excluidoLaudoEm?new Date(c.excluidoLaudoEm).toLocaleString('pt-BR'):'—';
+        return '<tr><td><strong>'+(c.laudoNum||'—')+'</strong></td><td>'+pontoLabel+'</td><td>'+(c.data||'—')+' '+(c.hora||'')+'</td><td style="font-size:12px">'+(c.motivoExclusaoLaudo||'—')+'</td><td>'+(c.excluidoLaudoPor||'—')+'</td><td style="font-size:11px">'+quando+'</td></tr>';
+      }).join('');
+    }).catch(function(e){
+      tbody.innerHTML='<tr><td colspan="6" class="empty">Erro ao carregar histórico.</td></tr>';
+      console.error('Erro ao carregar exclusões:',e);
+    });
   }
 };
 
@@ -8478,7 +8583,10 @@ function renderVRRelatorio(){
       '<span style="font-size:12px;font-weight:600;color:#633806">Desconsiderar esta coleta dos indicadores e VR</span>'+ 
       '</label>'+ 
       '<div class="fg" style="margin-bottom:4px"><label>Motivo da desconsideração</label><textarea id="cq-excluir-vr-motivo" rows="2" placeholder="Ex: amostra de teste, calibração, erro de lançamento..."></textarea></div>'+ 
-      '<div id="cq-excluir-vr-info" style="font-size:10px;color:#854F0B"></div>';
+      '<div id="cq-excluir-vr-info" style="font-size:10px;color:#854F0B;margin-bottom:10px"></div>'+
+      '<div style="border-top:1px solid #E2C98B;padding-top:9px">'+
+      '<button type="button" class="btn" style="color:#A32D2D;border-color:#E2A0A0" onclick="abrirExclusaoLaudo()"><i class="ti ti-trash"></i> Excluir laudo definitivamente</button>'+
+      '</div>';
     var acard=$('c-acard');
     if(acard&&acard.parentNode)acard.parentNode.insertBefore(box,acard);
     else{
