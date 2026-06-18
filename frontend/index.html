@@ -87,140 +87,11 @@ function cqGetSavedUnitId(){
 }
 function cqSetSavedUnitId(id){try{localStorage.setItem('cqActiveUnitId',String(id));}catch(e){}}
 function cqActiveUnitId(){
-  var sel=document.getElementById('cq-unit-select');
-  if(sel&&sel.value)return parseInt(sel.value,10);
+  if(window.CQ_UNIT)return window.CQ_UNIT;
   return cqGetSavedUnitId();
 }
 window.cqActiveUnitId=cqActiveUnitId;
-function cqRenderUnitSelector(){
-  if(!SESSION)return;
-  var ta=document.getElementById('ta');
-  if(!ta)return;
-  var old=document.getElementById('cq-unit-select');
-  if(old&&old.parentNode)old.parentNode.remove();
-  var allowed=SESSION.unidades||[];
-  var opts=allowed.map(function(id){var u=DB.unidades.find(function(x){return x.id===id;});return u?'<option value="'+u.id+'">'+u.cod+' - '+u.nome+'</option>':'';}).join('');
-  if(!opts)return;
-  var wrap=document.createElement('div');
-  wrap.style.display='flex';wrap.style.alignItems='center';wrap.style.gap='6px';
-  wrap.innerHTML='<label style="font-size:11px;color:var(--muted);font-weight:600">Unidade</label><select id="cq-unit-select" style="width:220px;font-size:11px;padding:5px 8px">'+opts+'</select>';
-  ta.prepend(wrap);
-  var sel=document.getElementById('cq-unit-select');
-  var uid=cqGetSavedUnitId();
-  sel.value=String(uid);
-  if(sel.value!==String(uid)&&allowed.length)sel.value=String(allowed[0]);
-  var u=DB.unidades.find(function(x){return x.id===parseInt(sel.value,10);});
-  var sbu=document.getElementById('sb-un');if(sbu&&u)sbu.textContent=u.nome;
-  sel.onchange=function(){
-    var newId=parseInt(sel.value,10);
-    cqSetSavedUnitId(newId);
-    var u2=DB.unidades.find(function(x){return x.id===newId;});
-    var sbu2=document.getElementById('sb-un');if(sbu2&&u2)sbu2.textContent=u2.nome;
-    var p=document.querySelector('.page.on');
-    if(p){var id=p.id.replace('page-','');if(renders[id])renders[id]();}
-  };
-}
-window.cqRenderUnitSelector=cqRenderUnitSelector;
-
-function cqHistSigla(nome){
-  var n=String(nome||'').toUpperCase();
-  if(n.indexOf('UMIDADE')>=0)return 'UM';
-  if(n.indexOf('CASCA')>=0)return 'CA';
-  if(n.indexOf('FARELO')>=0)return 'FA';
-  if(n.indexOf('RENDA')>=0)return 'RE';
-  if(n.indexOf('QUEBRADO')>=0)return 'QU';
-  if(n.indexOf('BRANCURA')>=0)return 'BR';
-  if(n.indexOf('POLIMENTO')>=0)return 'PO';
-  if(n.indexOf('DESCASQUE')>=0)return 'D';
-  if(n.indexOf('DANIFIC')>=0)return 'DA';
-  if(n.indexOf('RAJADO')>=0)return 'RJ';
-  if(n.indexOf('MANCH')>=0)return 'MA';
-  if(n.indexOf('GNG')>=0)return 'GN';
-  return n.replace(/[^A-Z0-9]/g,'').slice(0,2)||'A';
-}
-function cqFmtValorCurto(v){
-  if(v===null||v===undefined)return '—';
-  if(typeof v==='string')return v;
-  var n=Number(v);
-  if(!isFinite(n))return String(v);
-  var s=(Math.round(n*100)/100).toString();
-  return s.replace('.',',');
-}
-function cqHistoricoResultadosCompactos(h){
-  var partes=[];
-  (h.resultados||[]).forEach(function(r){
-    var a=gA(r.analiseId);if(!a)return;
-    var pad=getPadraoNaData(h.pontoId,r.analiseId,h.data);
-    var isOk=isOkVal(pad,r.valor);
-    var txt=cqHistSigla(a.nome)+':'+cqFmtValorCurto(r.valor);
-    partes.push('<span style="color:'+(isOk?'#1a1a1a':'#A32D2D')+';font-weight:'+(isOk?'600':'800')+'">'+txt+'</span>');
-  });
-  return partes.join(' ');
-}
-function cqHistoricoLaudo(c,limite){
-  limite=limite||5;
-  return (DB.coletas||[]).filter(function(x){
-    return x.pontoId===c.pontoId&&x.id!==c.id&&(!c.unidadeId||!x.unidadeId||x.unidadeId===c.unidadeId);
-  }).sort(function(a,b){
-    var aa=String(a.data||'')+' '+String(a.horaSeg||a.hora||'');
-    var bb=String(b.data||'')+' '+String(b.horaSeg||b.hora||'');
-    return aa<bb?1:aa>bb?-1:0;
-  }).slice(0,limite);
-}
-function gerarPDF(c){
-  var p=gP(c.pontoId)||{nome:'—',num:'—'};
-  var forn=c.fornId?DB.fornecedores.find(function(x){return x.id===c.fornId;})||{nome:'—'}:{nome:'—'};
-  var un=DB.unidades.find(function(x){return x.id===c.unidadeId;})||{nome:'—',cod:'—'};
-  var hist=cqHistoricoLaudo(c,5);
-  var noks=(c.resultados||[]).filter(function(r){var pad=getPadraoNaData(c.pontoId,r.analiseId,c.data);return !isOkVal(pad,r.valor);});
-  var stLbl=noks.length?'FORA DO PADRÃO':'APROVADO';
-  var stCol=noks.length?'#A32D2D':'#3B6D11';
-  var rows=(c.resultados||[]).map(function(r){
-    var a=gA(r.analiseId);if(!a)return'';
-    var cfg=gPA(c.pontoId,r.analiseId),pad=getPadraoNaData(c.pontoId,r.analiseId,c.data);
-    var isOk=isOkVal(pad,r.valor);
-    var range=pad.min!==null&&pad.min!==undefined&&pad.max!==null&&pad.max!==undefined?pad.min+'–'+pad.max:pad.max!==null&&pad.max!==undefined?'máx '+pad.max:pad.min!==null&&pad.min!==undefined?'mín '+pad.min:'—';
-    return '<tr style="background:'+(isOk?'#EAF3DE':'#FCEBEB')+'"><td>'+a.nome+(cfg&&cfg.vr?'*':'')+'</td><td style="text-align:center">'+cqFmtValorCurto(r.valor)+' '+(a.tipo==='texto'?'':a.unidade)+'</td><td style="text-align:center">'+range+(a&&a.tipo!=='texto'?' '+a.unidade:'')+'</td><td style="text-align:center;font-weight:700;color:'+(isOk?'#3B6D11':'#A32D2D')+'">'+(isOk?'OK':'FORA')+'</td></tr>';
-  }).join('');
-  var histRows=hist.map(function(h){
-    var st=cSt(h);
-    return '<tr><td>'+h.laudoNum+'</td><td>'+cqDateBR(h.data)+'</td><td>'+h.tipo+'</td><td style="white-space:normal;font-size:10.5px;line-height:1.5">'+cqHistoricoResultadosCompactos(h)+'</td><td style="font-weight:700;color:'+(st==='ok'?'#3B6D11':'#A32D2D')+'">'+(st==='ok'?'OK':'FORA')+'</td></tr>';
-  }).join('');
-  var logoHtml=DB.config.logo?'<img src="'+DB.config.logo+'" style="height:40px;object-fit:contain">':'<span style="font-size:18px;font-weight:600">'+DB.config.empresa+'</span>';
-  var obs=c.observacao?'<div class="section"><h3>Observação</h3><p style="font-size:12px">'+c.observacao+'</p></div>':'';
-  var html='<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Laudo '+c.laudoNum+'</title>';
-  html+='<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:IBM Plex Sans,Segoe UI,sans-serif;padding:28px;max-width:800px;margin:0 auto}.header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:13px;border-bottom:2px solid #185FA5;margin-bottom:18px}.lnum{font-size:22px;font-weight:600;color:#185FA5;font-family:IBM Plex Mono,Consolas,monospace}.sbadge{display:inline-block;padding:4px 13px;border-radius:20px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;background:'+stCol+';color:#fff;margin-top:4px}.section{margin-bottom:16px}.section h3{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:#555;margin-bottom:7px;padding-bottom:4px;border-bottom:1px solid #eee}.igrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}.ifield p{font-size:10px;color:#888;margin-bottom:1px}.ifield strong{font-size:12px}table{width:100%;border-collapse:collapse;font-size:11px}th{background:#f4f4f2;padding:7px 9px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.4px;color:#666;border-bottom:1px solid #ddd}td{padding:6px 9px;border-bottom:1px solid #f0efe8}.footer{margin-top:22px;padding-top:11px;border-top:1px solid #eee;display:flex;justify-content:space-between;font-size:9px;color:#aaa}@media print{body{padding:15px}}</style></head><body>';
-  html+='<div class="header"><div>'+logoHtml+'<div style="font-size:10px;color:#888;margin-top:4px">CNPJ: '+DB.config.cnpj+'</div></div><div style="text-align:right"><div class="lnum">'+c.laudoNum+'</div><div class="sbadge">'+stLbl+'</div><div style="font-size:10px;color:#888;margin-top:5px">'+cqDateBR(c.data)+' às '+cqHoraMin(c.hora)+'</div></div></div>';
-  html+='<div class="section"><h3>Identificação</h3><div class="igrid"><div class="ifield"><p>Nº do laudo</p><strong>'+c.laudoNum+'</strong></div><div class="ifield"><p>Unidade</p><strong>'+un.cod+' — '+un.nome+'</strong></div><div class="ifield"><p>Data da coleta</p><strong>'+cqDateBR(c.data)+'</strong></div><div class="ifield"><p>Hora da coleta</p><strong>'+cqHoraMin(c.hora)+'</strong></div><div class="ifield"><p>Ponto</p><strong>'+pLabel(p)+'</strong></div><div class="ifield"><p>Tipo</p><strong>'+c.tipo+'</strong></div><div class="ifield"><p>Fornecedor</p><strong>'+forn.nome+'</strong></div><div class="ifield"><p>Lote</p><strong>'+(c.lote||'—')+'</strong></div><div class="ifield"><p>Validade</p><strong>'+(c.validade||'—')+'</strong></div><div class="ifield"><p>Analista</p><strong>'+c.resp+'</strong></div></div></div>';
-  html+='<div class="section"><h3>Resultados</h3><table><thead><tr><th>Análise</th><th style="text-align:center">Resultado</th><th style="text-align:center">Padrão</th><th style="text-align:center">Status</th></tr></thead><tbody>'+rows+'</tbody></table>'+(typeof hasVrNoLaudo!=='undefined'&&hasVrNoLaudo?'<div style="font-size:9px;color:#666;margin-top:6px">* Análises utilizadas para composição do Valor de Referência (VR).</div>':'')+'</div>'+obs;
-  if(hist.length)html+='<div class="section"><h3>Histórico recente</h3><table><thead><tr><th style="width:70px">Laudo</th><th style="width:75px">Data</th><th style="width:65px">Tipo</th><th>Resultados</th><th style="width:60px">Status</th></tr></thead><tbody>'+histRows+'</tbody></table></div>';
-  html+='<div class="footer"><span>CQ System — Controle de Qualidade</span><span>Gerado em '+new Date().toLocaleString('pt-BR')+'</span></div></body></html>';
-  var blob=new Blob([html],{type:'text/html;charset=utf-8'});
-  var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='Laudo_'+c.laudoNum+'.html';a.click();setTimeout(function(){URL.revokeObjectURL(a.href);},1000);
-}
-window.gerarPDF=gerarPDF;
-
-(function(){
-  var oldSalvarFinal=window.salvarColeta;
-  window.salvarColeta=function(){
-    var uid=cqActiveUnitId();
-    var original=(SESSION&&SESSION.unidades)?SESSION.unidades.slice():null;
-    if(SESSION&&SESSION.unidades&&SESSION.unidades.indexOf(uid)>=0){
-      SESSION.unidades=[uid].concat(SESSION.unidades.filter(function(x){return x!==uid;}));
-    }
-    try{return oldSalvarFinal();}
-    finally{if(original)SESSION.unidades=original;}
-  };
-})();
-/* ===== FIM CORRECAO: HISTORICO COMPACTO NO LAUDO + UNIDADE PERSISTENTE ===== */
-
-
-
-/* ===== CORRECAO DEFINITIVA: UNIDADE ATIVA PERSISTENTE ENTRE MODULOS ===== */
-(function(){
-  function cqLsGet(){
-    try{return parseInt(localStorage.getItem('cqActiveUnitId')||'',10)||null;}catch(e){return null;}
-  }
+  function cqRenderUnitSelector(){ window.cqSbUnitInit && window.cqSbUnitInit(); }
   function cqLsSet(id){
     try{localStorage.setItem('cqActiveUnitId',String(id));}catch(e){}
   }
@@ -261,7 +132,7 @@ window.gerarPDF=gerarPDF;
     wrap.style.alignItems='center';
     wrap.style.gap='6px';
     wrap.innerHTML='<label style="font-size:11px;color:var(--muted);font-weight:600">Unidade</label><select id="cq-unit-select" style="width:220px;font-size:11px;padding:5px 8px">'+opts+'</select>';
-    ta.prepend(wrap);
+    /* unit selector moved to sidebar */;
     var sel=document.getElementById('cq-unit-select');
     var uid=cqCurrentUnitId();
     sel.value=String(uid);
@@ -328,9 +199,6 @@ window.gerarPDF=gerarPDF;
     try{return prevSalvar?prevSalvar():undefined;}
     finally{if(original)SESSION.unidades=original;}
   };
-})();
-/* ===== FIM CORRECAO DEFINITIVA: UNIDADE ATIVA PERSISTENTE ENTRE MODULOS ===== */
-
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -464,6 +332,10 @@ tfoot td{background:#f0efe8;font-weight:700;font-size:11px;padding:7px 9px;borde
 <div id="app" class="app" style="display:none">
   <div class="sb">
     <div class="sb-logo"><img id="sb-logo-img" style="height:80px;object-fit:contain"><strong>CQ System</strong><span id="sb-un">—</span></div>
+    <div id="cq-sb-unit-box" style="display:none;padding:6px 12px 8px;border-bottom:1px solid var(--bd)">
+      <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Unidade</div>
+      <select id="cq-sb-unit-sel" style="width:100%;font-size:12px;padding:4px 8px;border:1px solid var(--bd);border-radius:5px;background:var(--bg2);color:var(--txt);cursor:pointer;font-weight:600"></select>
+    </div>
     <div class="sb-user"><div class="av" id="sb-av">—</div><div><div class="sb-uname" id="sb-nm">—</div><div class="sb-urole" id="sb-rl">—</div></div></div>
     <div class="nav-sec">Operação</div>
     <div class="ni on" id="n-dash" onclick="nav('dash',this)"><i class="ti ti-layout-dashboard"></i>Dashboard</div>
@@ -486,6 +358,10 @@ tfoot td{background:#f0efe8;font-weight:700;font-size:11px;padding:7px 9px;borde
     <div class="content">
 <!-- DASHBOARD -->
 <div id="page-dash" class="page on">
+  <!-- Toggle dashboard mode -->
+  <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+    <button id="dash-toggle-btn" onclick="dashToggleMode()" style="font-size:11px;padding:4px 12px;border:1px solid var(--bd);border-radius:5px;background:var(--bg2);cursor:pointer;display:flex;align-items:center;gap:5px"><i class="ti ti-layout-dashboard" aria-hidden="true"></i> <span id="dash-toggle-lbl">Modo Produção</span></button>
+  </div>
   <!-- KPIs -->
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px">
     <div class="met" style="border-left:3px solid var(--blue)"><label>Coletas hoje</label><span id="m-l">0</span></div>
@@ -493,7 +369,14 @@ tfoot td{background:#f0efe8;font-weight:700;font-size:11px;padding:7px 9px;borde
     <div class="met" style="border-left:3px solid #3B6D11"><label>% Conf. Armazém</label><span id="m-conf-arm" style="color:#3B6D11;font-size:18px">—</span><small id="m-conf-arm-per" style="display:block;font-size:9px;color:var(--muted);margin-top:1px"></small></div>
     <div class="met" style="border-left:3px solid #ED7D31"><label>% Conf. Produção</label><span id="m-conf-prod" style="color:#ED7D31;font-size:18px">—</span><small id="m-conf-prod-per" style="display:block;font-size:9px;color:var(--muted);margin-top:1px"></small></div>
   </div>
-  <!-- Dois painéis -->
+  <!-- Container modo produção inline -->
+  <div id="dash-prod-inline" style="display:none">
+    <div id="dp-inline-s1" style="margin-bottom:10px"></div>
+    <div id="dp-inline-s2" style="margin-bottom:10px"></div>
+    <div id="dp-inline-s3"></div>
+  </div>
+  <!-- Dois painéis (modo padrão) -->
+  <div id="dash-padrao-content">
   <div style="display:grid;grid-template-columns:1fr 1.7fr;gap:12px">
     <!-- Conformidade do mês -->
     <div class="card" style="padding:0;overflow:hidden">
@@ -507,6 +390,7 @@ tfoot td{background:#f0efe8;font-weight:700;font-size:11px;padding:7px 9px;borde
       <tbody id="db-body"></tbody></table>
     </div>
   </div>
+  </div><!-- fim dash-padrao-content -->
   <div id="db-alerts"></div>
 </div>
 
@@ -852,7 +736,7 @@ tfoot td{background:#f0efe8;font-weight:700;font-size:11px;padding:7px 9px;borde
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
     <div class="fg"><label>Senha *</label><input id="mu-pw" type="password"></div>
     <div class="fg"><label>Perfil *</label>
-      <select id="mu-pf"><option value="">...</option><option value="admin">Admin</option><option value="analista">Analista</option><option value="geral">Geral</option></select>
+      <select id="mu-pf"><option value="">...</option><option value="admin">Admin</option><option value="analista">Analista</option><option value="geral">Geral</option><option value="producao">Produção (Dashboard)</option></select>
     </div>
   </div>
   <div class="fg"><label>Unidades</label><div id="mu-un" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:4px"></div></div>
@@ -916,65 +800,23 @@ var SEED={"analises":[{"id":1,"nome":"UMIDADE","unidade":"%","ativo":true,"dataD
 var VR_SUMMARY={};
 var DB={
   config:{empresa:"Célia Alimentos Ltda",cnpj:"03.014.374/0001-54",logo:CELIA_LOGO,fabricantePadrao:"Célia Alimentos",metaVR:85},
-  unidades:[{id:1,cod:"UN01",nome:"Matriz - Meleiro/SC"},{id:2,cod:"UN02",nome:"Filial - Turvo/SC"}],
+  unidades:[{id:1,cod:"001",nome:"Célia Alimentos Ltda - Meleiro/SC"},{id:14,cod:"014",nome:"Célia Alimentos Ltda - Osório/RS"}],
   usuarios:[
     {id:1,nome:"Administrador",login:"admin",senha:"123",perfil:"admin",unidades:[1,2],assinatura:null},
     {id:2,nome:"Carlos Analista",login:"analista",senha:"123",perfil:"analista",unidades:[1],assinatura:null},
-    {id:3,nome:"Gerente Geral",login:"geral",senha:"123",perfil:"geral",unidades:[1,2],assinatura:null}
+    {id:3,nome:"Gerente Geral",login:"geral",senha:"123",perfil:"geral",unidades:[1,2],assinatura:null},
+    {id:4,nome:"Operador Produção",login:"producao",senha:"prod123",perfil:"producao",unidades:[1],assinatura:null},
+    {id:5,nome:"Dashboard Produção",login:"producao1",senha:"senha123",perfil:"producao",unidades:[1],assinatura:null}
   ],
   analises:SEED.analises,
   pontos:SEED.pontos,
   pontoAnalises:SEED.pontoAnalises,
   fornecedores:[{id:1,nome:"Célia Alimentos",cnpj:"03.014.374/0001-54"}],
   coletas:SEED.coletas,
-  nextIds:{analise:50,ponto:20,forn:2,user:4,coleta:SEED.nextCid,unidade:3},
+  nextIds:{analise:50,ponto:20,forn:2,user:6,coleta:SEED.nextCid,unidade:3},
   laudoSeq:SEED.laudoSeq,
   vrPontoOrder:[]
 };
-/* ===== INTEGRAÇÃO COM API BACKEND ===== */
-const API_URL = 'https://cq-system-backend.onrender.com';
-
-async function apiPost(path, body) {
-  try {
-    const r = await fetch(API_URL + path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    return r.json();
-  } catch(e) { console.error('API erro:', e); }
-}
-async function apiDelete(path) {
-  try {
-    const r = await fetch(API_URL + path, { method: 'DELETE' });
-    return r.json();
-  } catch(e) { console.error('API erro:', e); }
-}
-
-async function carregarDB() {
-  try {
-    const r = await fetch(API_URL + '/api/db');
-    const dados = await r.json();
-    Object.assign(DB, dados);
-  } catch(e) {
-    alert('Erro ao conectar com o servidor. Tente recarregar a página.');
-  }
-}
-
-window.addEventListener('DOMContentLoaded', function() {
-  var ls = document.createElement('div');
-  ls.id = 'loading-screen';
-  ls.style.cssText = 'position:fixed;inset:0;background:#f4f4f2;display:flex;align-items:center;justify-content:center;z-index:9999';
-  ls.innerHTML = '<div style="text-align:center;font-family:sans-serif"><div style="font-size:40px;margin-bottom:16px">⏳</div><div style="font-size:14px;color:#666">Carregando dados...</div></div>';
-  document.body.appendChild(ls);
-  document.getElementById('login-screen').style.display = 'none';
-
-  carregarDB().then(function() {
-    document.getElementById('loading-screen').remove();
-    document.getElementById('login-screen').style.display = 'flex';
-  });
-});
-/* ===== FIM INTEGRAÇÃO ===== */
 var SESSION=null, editCid=null, indVROnly=false, indCharts=[], vrChart=null;
 var MONTHS=['2026-01','2026-02','2026-03','2026-04','2026-05'];
 var MONTH_LABELS=['jan/26','fev/26','mar/26','abr/26','mai/26'];
@@ -1058,6 +900,12 @@ function doLogin(){
   if(!f){document.getElementById('lerr').style.display='block';return;}
   document.getElementById('lerr').style.display='none';
   SESSION=f;
+  if(f.perfil==='producao'){
+    document.getElementById('login-screen').style.display='none';
+    if(typeof showDashProd==='function'){showDashProd();return;}
+    document.getElementById('app').style.display='flex';
+    applyPerms();renders.dash();return;
+  }
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='flex';
   var un=DB.unidades.find(function(x){return f.unidades.indexOf(x.id)>=0;});
@@ -1181,11 +1029,9 @@ function saveFor(){
   var cnpj=document.getElementById('mf-cnpj').value.trim();
   if(!nome||!cnpj)return alert('Preencha nome e CNPJ.');
   DB.fornecedores.push({id:DB.nextIds.forn++,nome:nome,cnpj:cnpj});
-  apiPost('/api/fornecedores', {nome:nome, cnpj:cnpj});
   closeM('m-for');renders.for();
 }
 function delFor(id){if(confirm('Remover fornecedor?')){DB.fornecedores=DB.fornecedores.filter(function(x){return x.id!==id;});renders.for();}}
-apiDelete('/api/fornecedores/' + id);
 function initMUsr(){
   ['mu-nm','mu-lg','mu-pw'].forEach(function(f){document.getElementById(f).value='';});
   document.getElementById('mu-pf').value='';
@@ -1200,27 +1046,22 @@ function saveUsr(){
   if(DB.usuarios.find(function(u){return u.login===lg;}))return alert('Login já existe.');
   var uids=Array.from(document.querySelectorAll('#mu-un input:checked')).map(function(c){return parseInt(c.value);});
   DB.usuarios.push({id:DB.nextIds.user++,nome:nm,login:lg,senha:pw,perfil:pf,unidades:uids});
-  apiPost('/api/usuarios', {nome:nm, login:lg, senha:pw, perfil:pf, unidades:uids});
   closeM('m-usr');renders.usr();
 }
 function delUsr(id){if(confirm('Remover?')){DB.usuarios=DB.usuarios.filter(function(x){return x.id!==id;});renders.usr();}}
-apiDelete('/api/usuarios/' + id);
 function saveUn(){
   var c=document.getElementById('mun-c').value.trim().toUpperCase();
   var n=document.getElementById('mun-n').value.trim();
   if(!c||!n)return alert('Preencha código e nome.');
   DB.unidades.push({id:DB.nextIds.unidade++,cod:c,nome:n});
-  apiPost('/api/unidades', {cod:c, nome:n});
   closeM('m-un');renders.cfg();
 }
 function delUn(id){if(confirm('Remover?')){DB.unidades=DB.unidades.filter(function(x){return x.id!==id;});renders.cfg();}}
-apiDelete('/api/unidades/' + id);
 function saveCfg(){
   DB.config.empresa=document.getElementById('cfg-emp').value.trim();
   DB.config.cnpj=document.getElementById('cfg-cnpj').value.trim();
   DB.config.logo=document.getElementById('cfg-logo').value.trim();
   alert('Salvo!');
-  apiPost('/api/config', DB.config);
 }
 
 // ---- HISTÓRICO DE PADRÕES ----
@@ -1389,7 +1230,7 @@ function salvarColeta(){
   var val=document.getElementById('c-val').value;
   if(p.req.lote&&!lote)return alert('Lote obrigatório.');
   if(p.req.validade&&!val)return alert('Validade obrigatória.');
-  var un=DB.unidades.find(function(x){return SESSION.unidades.indexOf(x.id)>=0;});
+  var un=DB.unidades.find(function(x){return x.id===(window.CQ_UNIT||cqActiveUnitId());});
   atualizarSequenciaLaudos();
   var tipo=document.getElementById('c-glob').checked?'Global':'Pontual';
   var cfgs=gPAs(pid),resultados=[];
@@ -1413,10 +1254,8 @@ function salvarColeta(){
   if(editId&&editId>0){
     var idx=DB.coletas.findIndex(function(x){return x.id===editId;});
     if(idx>=0)DB.coletas[idx]=c;else DB.coletas.push(c);
-    apiPost('/api/coletas', c);
   } else {
     DB.coletas.push(c);
-    apiPost('/api/coletas', c);
   }
   gerarPDF(c);
   document.getElementById('c-laudo').removeAttribute('data-edit-id');
@@ -1584,7 +1423,7 @@ var renders={
     document.getElementById('c-data').value=now.toISOString().split('T')[0];
     document.getElementById('c-hora').value=now.toTimeString().slice(0,5);
     document.getElementById('c-resp').value=SESSION.nome;
-    var un=DB.unidades.find(function(x){return SESSION.unidades.indexOf(x.id)>=0;});
+    var un=DB.unidades.find(function(x){return x.id===(window.CQ_UNIT||cqActiveUnitId());});
     document.getElementById('c-unid').value=un?un.cod+' — '+un.nome:'—';
     document.getElementById('c-laudo').value='';
     document.getElementById('c-acard').style.display='none';var _ph=document.getElementById('c-acard-placeholder');if(_ph)_ph.style.display='flex';;
@@ -2942,7 +2781,54 @@ renders.dash = function(){
   document.getElementById('db-alerts').innerHTML = noks.length ?
     '<div class="nok-box"><h4><i class="ti ti-alert-triangle" style="font-size:14px"></i> '+noks.length+' coleta(s) fora do padrao hoje</h4><ul>'+
     noks.map(function(c){var p=gP(c.pontoId)||{nome:'—',num:'—'};return'<li>• Laudo '+c.laudoNum+' — '+pLabel(p)+'</li>';}).join('')+'</ul></div>' : '';
+  dashInitUnitSel();
+  var lbl = document.getElementById('dash-toggle-lbl');
+  if(lbl) lbl.textContent = DASH_MODE === 'padrao' ? 'Modo Produção' : 'Modo Padrão';
+  var dashProd = document.getElementById('dash-prod-inline');
+  var dashPadrao = document.getElementById('dash-padrao-content');
+  if(DASH_MODE === 'producao'){
+    if(dashProd) dashProd.style.display = 'block';
+    if(dashPadrao) dashPadrao.style.display = 'none';
+    dashProdRenderInline();
+  } else {
+    if(dashProd) dashProd.style.display = 'none';
+    if(dashPadrao) dashPadrao.style.display = '';
+  }
 };
+
+// ---- DASH MODE TOGGLE + UNIT SELECTOR ----
+var DASH_MODE = localStorage.getItem('cqDashMode') || 'padrao';
+var DASH_UNIT_FILTER = null;
+
+function dashInitUnitSel(){
+  var sel = document.getElementById('dash-unit-sel');
+  if(!sel) return;
+  var uns = DB.unidades.filter(function(u){ return !SESSION || !SESSION.unidades || SESSION.unidades.indexOf(u.id) >= 0; });
+  sel.innerHTML = '<option value="">Todas</option>' + uns.map(function(u){ return '<option value="'+u.id+'">'+u.nome+'</option>'; }).join('');
+  sel.value = DASH_UNIT_FILTER || '';
+}
+
+function dashSetUnit(val){
+  DASH_UNIT_FILTER = val ? parseInt(val) : null;
+  renders.dash();
+}
+
+function dashToggleMode(){
+  DASH_MODE = DASH_MODE === 'padrao' ? 'producao' : 'padrao';
+  localStorage.setItem('cqDashMode', DASH_MODE);
+  var lbl = document.getElementById('dash-toggle-lbl');
+  if(lbl) lbl.textContent = DASH_MODE === 'padrao' ? 'Modo Produção' : 'Modo Padrão';
+  var dashProd = document.getElementById('dash-prod-inline');
+  var dashPadrao = document.getElementById('dash-padrao-content');
+  if(DASH_MODE === 'producao'){
+    if(dashProd) dashProd.style.display = 'block';
+    if(dashPadrao) dashPadrao.style.display = 'none';
+    dashProdRenderInline();
+  } else {
+    if(dashProd) dashProd.style.display = 'none';
+    if(dashPadrao) dashPadrao.style.display = 'block';
+  }
+}
 
 // Col override - pre-fill date/time/fabricante
 var _origRendersCol = renders.col;
@@ -3629,7 +3515,7 @@ function salvarColeta(){
   var val=document.getElementById('c-val').value;
   if(p.req.lote&&!lote)return alert('Lote obrigatório.');
   if(p.req.validade&&!val)return alert('Validade obrigatória.');
-  var un=DB.unidades.find(function(x){return SESSION.unidades.indexOf(x.id)>=0;});
+  var un=DB.unidades.find(function(x){return x.id===(window.CQ_UNIT||cqActiveUnitId());});
   atualizarSequenciaLaudos();
   var tipo=document.getElementById('c-glob').checked?'Global':'Pontual';
   var dataColeta=document.getElementById('c-data').value;
@@ -4101,7 +3987,7 @@ function salvarColeta(){
   var val=document.getElementById('c-val').value;
   if(p.req.lote&&!lote)return alert('Lote obrigatório.');
   if(p.req.validade&&!val)return alert('Validade obrigatória.');
-  var un=DB.unidades.find(function(x){return SESSION.unidades.indexOf(x.id)>=0;});
+  var un=DB.unidades.find(function(x){return x.id===(window.CQ_UNIT||cqActiveUnitId());});
   atualizarSequenciaLaudos();
   var tipo=document.getElementById('c-glob').checked?'Global':'Pontual';
   var dataColeta=document.getElementById('c-data').value;
@@ -4231,7 +4117,7 @@ function salvarColeta(){
   var val=document.getElementById('c-val').value;
   if(p.req.lote&&!lote)return alert('Lote obrigatório.');
   if(p.req.validade&&!val)return alert('Validade obrigatória.');
-  var un=DB.unidades.find(function(x){return SESSION.unidades.indexOf(x.id)>=0;});
+  var un=DB.unidades.find(function(x){return x.id===(window.CQ_UNIT||cqActiveUnitId());});
   var tipo=document.getElementById('c-glob').checked?'Global':'Pontual';
   var dataColeta=document.getElementById('c-data').value;
   var horaMin=(document.getElementById('c-hora').value||'').slice(0,5);
@@ -4507,27 +4393,22 @@ function cqVRLabelPlugin(){
 
 /* ===== CADASTROS OFICIAIS: UNIDADES, USUARIOS E PONTOS DE COLETA ===== */
 (function cqCadastroOficial(){
-  var unidades=[{"id": 1, "cod": "001", "nome": "Célia Alimentos Ltda - Meleiro/SC"}, {"id": 2, "cod": "014", "nome": "Célia Alimentos Ltda - Osório/SC"}];
-  var usuarios=[{"id": 1, "nome": "Jailson Macarini Fenali", "login": "jailson1", "senha": "123", "perfil": "admin", "unidades": [1, 2], "assinatura": null}, {"id": 2, "nome": "Leonardo Lopes", "login": "aprendiz2", "senha": "123", "perfil": "analista", "unidades": [2], "assinatura": null}, {"id": 3, "nome": "Jessica Mattana de Matos", "login": "jessica2", "senha": "123", "perfil": "analista", "unidades": [2], "assinatura": null}, {"id": 4, "nome": "Aline Martins", "login": "aline2", "senha": "123", "perfil": "analista", "unidades": [2], "assinatura": null}, {"id": 5, "nome": "Lucas Rabelo da Silva", "login": "lucas2", "senha": "123", "perfil": "analista", "unidades": [1], "assinatura": null}, {"id": 6, "nome": "Yuri Mateus Brovedan", "login": "yuri2", "senha": "123", "perfil": "analista", "unidades": [1], "assinatura": null}, {"id": 7, "nome": "Jailson Macarini Fenali", "login": "jailson2", "senha": "123", "perfil": "analista", "unidades": [1, 2], "assinatura": null}, {"id": 8, "nome": "Sidnei Acordi", "login": "sidnei2", "senha": "123", "perfil": "geral", "unidades": [2], "assinatura": null}, {"id": 9, "nome": "Michel Vieira", "login": "michel2", "senha": "123", "perfil": "geral", "unidades": [1], "assinatura": null}, {"id": 10, "nome": "Domingos Casagrande", "login": "domingos2", "senha": "123", "perfil": "geral", "unidades": [1], "assinatura": null}, {"id": 11, "nome": "Arthur Mondardo Olivo", "login": "arthur2", "senha": "123", "perfil": "geral", "unidades": [1, 2], "assinatura": null}, {"id": 12, "nome": "Leandro Olivo", "login": "leandro2", "senha": "123", "perfil": "geral", "unidades": [1, 2], "assinatura": null}];
-  var pontos=[{"id": 1, "num": 50, "nome": "BICA CORRIDA", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": true, "vrGroup": "producao", "ativo": true, "dataDesativacao": null}, {"id": 1000, "num": 1, "nome": "SECADOR NÃO USAR", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1001, "num": 2, "nome": "SAIDA SECADORES", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1002, "num": 10, "nome": "ENCHARCAMENTO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1003, "num": 16, "nome": "ESTUFA 01", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1004, "num": 17, "nome": "ESTUFA 02", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1005, "num": 30, "nome": "DESCASCADOR 01", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1006, "num": 31, "nome": "CAMARA CASCA 01", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1007, "num": 32, "nome": "SEPARADOR 01", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1008, "num": 33, "nome": "SEPARADOR 02", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1009, "num": 35, "nome": "DESCASCADOR 02", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1010, "num": 36, "nome": "CAMARA CASCA 02", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1011, "num": 37, "nome": "SEPARADOR 02", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1012, "num": 41, "nome": "VIBROAR E INSETOS", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1013, "num": 45, "nome": "BRUNIDOR 01", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1014, "num": 46, "nome": "POLIDOR 01", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1015, "num": 47, "nome": "POLIDOR 02", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1016, "num": 60, "nome": "FARELO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1017, "num": 65, "nome": "INTEGRAL SELEÇÃO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1018, "num": 70, "nome": "TIPO 1 - PARBO SELEÇÃO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1019, "num": 71, "nome": "ESPECIAL - TIPO 1 PARBO SELEÇÃO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1020, "num": 77, "nome": "RESIDUO - MAXIXEIRA", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1021, "num": 78, "nome": "QUEBRADO RESÍDUO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1022, "num": 79, "nome": "TIPO 1 A GRANEL", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1023, "num": 80, "nome": "T1 PACOTE INTEGRAL", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1024, "num": 81, "nome": "INTEGRAL A GRANEL", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1025, "num": 89, "nome": "TIPO 1 - POLIDO TERCEIROS", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1026, "num": 90, "nome": "TIPO 1 - POLIDO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1027, "num": 92, "nome": "TIPO 1 POLIDO - PACOTE", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1028, "num": 99, "nome": "ESPECIAL - TIPO 1 PARBO PACOTE", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1029, "num": 100, "nome": "TIPO 1 - PARBO PACOTE", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1030, "num": 104, "nome": "ENTRADA SAFRA SUSPENSA", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1031, "num": 101, "nome": "DESTILADOR Á ÓLEO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1032, "num": 103, "nome": "ENTRADA SAFRA ROTINA", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1033, "num": 102, "nome": "ENTRADA SAFRA DIRECIONADA", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1034, "num": 105, "nome": "MATERIA PRIMA PRODUÇÃO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1035, "num": 110, "nome": "SENSORIAL - PARBO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1036, "num": 111, "nome": "MATERIA PRIMA - SECO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1037, "num": 112, "nome": "SENSORIAL - POLIDO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1038, "num": 114, "nome": "SENSORIAL - MIX", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1039, "num": 120, "nome": "PENEIRA MOEGA 01", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1040, "num": 121, "nome": "PENEIRA MOEGA 02", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1041, "num": 122, "nome": "PENEIRA MOEGA 03", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1042, "num": 123, "nome": "PENEIRA TANQUES", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1043, "num": 125, "nome": "BATATA PALHA EXTRA FINA 100G", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1044, "num": 126, "nome": "BATATA PALHA TRADICIONAL 100G", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1045, "num": 127, "nome": "BATATA PALHA TRADICIONAL 400G", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1046, "num": 128, "nome": "BATATA PALHA TRADICIONAL 800G", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1047, "num": 129, "nome": "BATATA CHIPS ORIGINAL 30G", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1048, "num": 130, "nome": "BATATA CHIPS CHURRASCO 30G", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1049, "num": 131, "nome": "BATATA CHIPS CEBOLA SALSA 30G", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1050, "num": 132, "nome": "TAPIOCA 500G", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1051, "num": 133, "nome": "TAPIOCA 1KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1052, "num": 134, "nome": "FÉCULA DE MANDIOCA 1KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1053, "num": 135, "nome": "FARINHA AMARELA FINA 1KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1054, "num": 136, "nome": "FARINHA BRANCA FINA 1KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1055, "num": 137, "nome": "FARINHA TORRADA FINA 1KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1056, "num": 138, "nome": "FARINHA AMARELA GROSSA 1KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1057, "num": 139, "nome": "FARINHA BRANCA GROSSA 1KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1058, "num": 140, "nome": "INMETRO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1059, "num": 141, "nome": "PENEIRA 01 EMPAC. INSETOS", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1060, "num": 150, "nome": "SILO 01", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1061, "num": 142, "nome": "PENEIRA 02 EMPAC. INSETOS", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1062, "num": 151, "nome": "SILO 02", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1063, "num": 152, "nome": "SILO 03", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1064, "num": 153, "nome": "SILO 04", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1065, "num": 154, "nome": "SILO 05", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1066, "num": 155, "nome": "SILO 06", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1067, "num": 156, "nome": "SILO 07", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1068, "num": 157, "nome": "SILO 08", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1069, "num": 158, "nome": "SILO 09", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1070, "num": 159, "nome": "SILO 10", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1071, "num": 200, "nome": "EMBALAGEM PARBOILIZADO 1KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1072, "num": 210, "nome": "EMBALAGEM PARBOILIZADO 5KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1073, "num": 220, "nome": "EMBALAGEM BRANCO 1KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1074, "num": 230, "nome": "EMBALAGEM BRANCO 5KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1075, "num": 240, "nome": "EMBALAGEM MIX 5KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1076, "num": 250, "nome": "EMBALAGEM INTEGRAL 1KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1077, "num": 260, "nome": "EMBALAGEM RESÍDUO 5KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1078, "num": 300, "nome": "BEBEDOURO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1079, "num": 305, "nome": "POÇO 01 TRATADO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2000, "num": 1, "nome": "PONTO 01 - CLORO LIVRE", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2001, "num": 21, "nome": "MP - PRODUÇÃO", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2002, "num": 25, "nome": "PENEIRA DESCASCADORES", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2003, "num": 30, "nome": "DESCASCADOR 01", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2004, "num": 31, "nome": "CAMARA CASCA 01", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2005, "num": 35, "nome": "DESCASCADOR 02", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2006, "num": 36, "nome": "CAMARA CASCA 02", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2007, "num": 40, "nome": "VIBRO AR NÃO USAR", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2008, "num": 41, "nome": "VIBROAR INSETOS", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2009, "num": 44, "nome": "BRUNIDOR", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2010, "num": 45, "nome": "POLIDOR 01", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2011, "num": 46, "nome": "POLIDOR 02", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2012, "num": 50, "nome": "BICA CORRIDA - QUEB.", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2013, "num": 51, "nome": "BICA CORRIDA", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2014, "num": 52, "nome": "BICA CORRIDA - NÃO USAR", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2015, "num": 53, "nome": "BICA QUEBRADO OPERADORES", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2016, "num": 54, "nome": "BICA CORRIDA", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2017, "num": 60, "nome": "FARELO", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2018, "num": 61, "nome": "SENSORIAL BRANCO", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2019, "num": 70, "nome": "TIPO 1 - POLIDO", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2020, "num": 71, "nome": "TIPO 1 - EXPEDIÇÃO", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2021, "num": 73, "nome": "PENEIRA NÃO USAR", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2022, "num": 74, "nome": "PENEIRA EMPAC. INSETOS", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2023, "num": 75, "nome": "RESÍDUO NÃO USAR", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2024, "num": 76, "nome": "INTEIRO RESÍDUO", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2025, "num": 77, "nome": "QUEBRADO RESÍDUO", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2026, "num": 78, "nome": "DIF. QUEBRADO DESCASCADORES", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2027, "num": 100, "nome": "PENEIRA MOEGA 01", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2028, "num": 101, "nome": "PENEIRA MOEGA 02", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2029, "num": 110, "nome": "MATERIA PRIMA - SECO", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2030, "num": 111, "nome": "ENTRADA SAFRA ROTINA", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2031, "num": 112, "nome": "ENTRADA SAFRA SUSPENSA", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2032, "num": 150, "nome": "PENEIRA - ARMAZÉM", "unidadeId": 2, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}];
+  var unidades=[{"id": 1, "cod": "001", "nome": "Célia Alimentos Ltda - Meleiro/SC"}, {"id": 14, "cod": "014", "nome": "Célia Alimentos Ltda - Osório/RS"}];
+  var usuarios=[{"id": 1, "nome": "Jailson Macarini Fenali", "login": "jailson1", "senha": "123", "perfil": "admin", "unidades": [1, 14], "assinatura": null}, {"id": 2, "nome": "Leonardo Lopes", "login": "aprendiz2", "senha": "123", "perfil": "analista", "unidades": [14], "assinatura": null}, {"id": 3, "nome": "Jessica Mattana de Matos", "login": "jessica2", "senha": "123", "perfil": "analista", "unidades": [14], "assinatura": null}, {"id": 4, "nome": "Aline Martins", "login": "aline2", "senha": "123", "perfil": "analista", "unidades": [14], "assinatura": null}, {"id": 5, "nome": "Lucas Rabelo da Silva", "login": "lucas2", "senha": "123", "perfil": "analista", "unidades": [1], "assinatura": null}, {"id": 6, "nome": "Yuri Mateus Brovedan", "login": "yuri2", "senha": "123", "perfil": "analista", "unidades": [1], "assinatura": null}, {"id": 7, "nome": "Jailson Macarini Fenali", "login": "jailson2", "senha": "123", "perfil": "analista", "unidades": [1, 14], "assinatura": null}, {"id": 8, "nome": "Sidnei Acordi", "login": "sidnei2", "senha": "123", "perfil": "geral", "unidades": [14], "assinatura": null}, {"id": 9, "nome": "Michel Vieira", "login": "michel2", "senha": "123", "perfil": "geral", "unidades": [1], "assinatura": null}, {"id": 10, "nome": "Domingos Casagrande", "login": "domingos2", "senha": "123", "perfil": "geral", "unidades": [1], "assinatura": null}, {"id": 11, "nome": "Arthur Mondardo Olivo", "login": "arthur2", "senha": "123", "perfil": "geral", "unidades": [1, 14], "assinatura": null}, {"id": 12, "nome": "Leandro Olivo", "login": "leandro2", "senha": "123", "perfil": "geral", "unidades": [1, 14], "assinatura": null}, {"id": 13, "nome": "Dashboard Producao", "login": "producao1", "senha": "senha123", "perfil": "producao", "unidades": [1], "assinatura": null}];
+  var pontos=[{"id": 1, "num": 50, "nome": "BICA CORRIDA", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": true, "vrGroup": "producao", "ativo": true, "dataDesativacao": null}, {"id": 1000, "num": 1, "nome": "SECADOR NÃO USAR", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1001, "num": 2, "nome": "SAIDA SECADORES", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1002, "num": 10, "nome": "ENCHARCAMENTO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1003, "num": 16, "nome": "ESTUFA 01", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1004, "num": 17, "nome": "ESTUFA 02", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1005, "num": 30, "nome": "DESCASCADOR 01", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1006, "num": 31, "nome": "CAMARA CASCA 01", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1007, "num": 32, "nome": "SEPARADOR 01", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1008, "num": 33, "nome": "SEPARADOR 02", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1009, "num": 35, "nome": "DESCASCADOR 02", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1010, "num": 36, "nome": "CAMARA CASCA 02", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1011, "num": 37, "nome": "SEPARADOR 02", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1012, "num": 41, "nome": "VIBROAR E INSETOS", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1013, "num": 45, "nome": "BRUNIDOR 01", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1014, "num": 46, "nome": "POLIDOR 01", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1015, "num": 47, "nome": "POLIDOR 02", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1016, "num": 60, "nome": "FARELO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1017, "num": 65, "nome": "INTEGRAL SELEÇÃO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1018, "num": 70, "nome": "TIPO 1 - PARBO SELEÇÃO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1019, "num": 71, "nome": "ESPECIAL - TIPO 1 PARBO SELEÇÃO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1020, "num": 77, "nome": "RESIDUO - MAXIXEIRA", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1021, "num": 78, "nome": "QUEBRADO RESÍDUO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1022, "num": 79, "nome": "TIPO 1 A GRANEL", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1023, "num": 80, "nome": "T1 PACOTE INTEGRAL", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1024, "num": 81, "nome": "INTEGRAL A GRANEL", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1025, "num": 89, "nome": "TIPO 1 - POLIDO TERCEIROS", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1026, "num": 90, "nome": "TIPO 1 - POLIDO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1027, "num": 92, "nome": "TIPO 1 POLIDO - PACOTE", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1028, "num": 99, "nome": "ESPECIAL - TIPO 1 PARBO PACOTE", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1029, "num": 100, "nome": "TIPO 1 - PARBO PACOTE", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1030, "num": 104, "nome": "ENTRADA SAFRA SUSPENSA", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1031, "num": 101, "nome": "DESTILADOR Á ÓLEO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1032, "num": 103, "nome": "ENTRADA SAFRA ROTINA", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1033, "num": 102, "nome": "ENTRADA SAFRA DIRECIONADA", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1034, "num": 105, "nome": "MATERIA PRIMA PRODUÇÃO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1035, "num": 110, "nome": "SENSORIAL - PARBO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1036, "num": 111, "nome": "MATERIA PRIMA - SECO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1037, "num": 112, "nome": "SENSORIAL - POLIDO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1038, "num": 114, "nome": "SENSORIAL - MIX", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1039, "num": 120, "nome": "PENEIRA MOEGA 01", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1040, "num": 121, "nome": "PENEIRA MOEGA 02", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1041, "num": 122, "nome": "PENEIRA MOEGA 03", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1042, "num": 123, "nome": "PENEIRA TANQUES", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1043, "num": 125, "nome": "BATATA PALHA EXTRA FINA 100G", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1044, "num": 126, "nome": "BATATA PALHA TRADICIONAL 100G", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1045, "num": 127, "nome": "BATATA PALHA TRADICIONAL 400G", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1046, "num": 128, "nome": "BATATA PALHA TRADICIONAL 800G", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1047, "num": 129, "nome": "BATATA CHIPS ORIGINAL 30G", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1048, "num": 130, "nome": "BATATA CHIPS CHURRASCO 30G", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1049, "num": 131, "nome": "BATATA CHIPS CEBOLA SALSA 30G", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1050, "num": 132, "nome": "TAPIOCA 500G", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1051, "num": 133, "nome": "TAPIOCA 1KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1052, "num": 134, "nome": "FÉCULA DE MANDIOCA 1KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1053, "num": 135, "nome": "FARINHA AMARELA FINA 1KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1054, "num": 136, "nome": "FARINHA BRANCA FINA 1KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1055, "num": 137, "nome": "FARINHA TORRADA FINA 1KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1056, "num": 138, "nome": "FARINHA AMARELA GROSSA 1KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1057, "num": 139, "nome": "FARINHA BRANCA GROSSA 1KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1058, "num": 140, "nome": "INMETRO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1059, "num": 141, "nome": "PENEIRA 01 EMPAC. INSETOS", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1060, "num": 150, "nome": "SILO 01", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1061, "num": 142, "nome": "PENEIRA 02 EMPAC. INSETOS", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1062, "num": 151, "nome": "SILO 02", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1063, "num": 152, "nome": "SILO 03", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1064, "num": 153, "nome": "SILO 04", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1065, "num": 154, "nome": "SILO 05", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1066, "num": 155, "nome": "SILO 06", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1067, "num": 156, "nome": "SILO 07", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1068, "num": 157, "nome": "SILO 08", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1069, "num": 158, "nome": "SILO 09", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1070, "num": 159, "nome": "SILO 10", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1071, "num": 200, "nome": "EMBALAGEM PARBOILIZADO 1KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1072, "num": 210, "nome": "EMBALAGEM PARBOILIZADO 5KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1073, "num": 220, "nome": "EMBALAGEM BRANCO 1KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1074, "num": 230, "nome": "EMBALAGEM BRANCO 5KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1075, "num": 240, "nome": "EMBALAGEM MIX 5KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1076, "num": 250, "nome": "EMBALAGEM INTEGRAL 1KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1077, "num": 260, "nome": "EMBALAGEM RESÍDUO 5KG", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1078, "num": 300, "nome": "BEBEDOURO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 1079, "num": 305, "nome": "POÇO 01 TRATADO", "unidadeId": 1, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2000, "num": 1, "nome": "PONTO 01 - CLORO LIVRE", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2001, "num": 21, "nome": "MP - PRODUÇÃO", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2002, "num": 25, "nome": "PENEIRA DESCASCADORES", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2003, "num": 30, "nome": "DESCASCADOR 01", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2004, "num": 31, "nome": "CAMARA CASCA 01", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2005, "num": 35, "nome": "DESCASCADOR 02", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2006, "num": 36, "nome": "CAMARA CASCA 02", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2007, "num": 40, "nome": "VIBRO AR NÃO USAR", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2008, "num": 41, "nome": "VIBROAR INSETOS", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2009, "num": 44, "nome": "BRUNIDOR", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2010, "num": 45, "nome": "POLIDOR 01", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2011, "num": 46, "nome": "POLIDOR 02", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2012, "num": 50, "nome": "BICA CORRIDA - QUEB.", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2013, "num": 51, "nome": "BICA CORRIDA", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2014, "num": 52, "nome": "BICA CORRIDA - NÃO USAR", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2015, "num": 53, "nome": "BICA QUEBRADO OPERADORES", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2016, "num": 54, "nome": "BICA CORRIDA", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2017, "num": 60, "nome": "FARELO", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2018, "num": 61, "nome": "SENSORIAL BRANCO", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2019, "num": 70, "nome": "TIPO 1 - POLIDO", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2020, "num": 71, "nome": "TIPO 1 - EXPEDIÇÃO", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2021, "num": 73, "nome": "PENEIRA NÃO USAR", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2022, "num": 74, "nome": "PENEIRA EMPAC. INSETOS", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2023, "num": 75, "nome": "RESÍDUO NÃO USAR", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2024, "num": 76, "nome": "INTEIRO RESÍDUO", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2025, "num": 77, "nome": "QUEBRADO RESÍDUO", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2026, "num": 78, "nome": "DIF. QUEBRADO DESCASCADORES", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2027, "num": 100, "nome": "PENEIRA MOEGA 01", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2028, "num": 101, "nome": "PENEIRA MOEGA 02", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2029, "num": 110, "nome": "MATERIA PRIMA - SECO", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2030, "num": 111, "nome": "ENTRADA SAFRA ROTINA", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2031, "num": 112, "nome": "ENTRADA SAFRA SUSPENSA", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}, {"id": 2032, "num": 150, "nome": "PENEIRA - ARMAZÉM", "unidadeId": 14, "req": {"lote": false, "validade": false, "forn": false}, "vr": false, "vrGroup": null, "ativo": true, "dataDesativacao": null}];
 
   DB.unidades=unidades;
   DB.usuarios=usuarios;
   DB.pontos=pontos;
   DB.nextIds.user=13;
-  DB.nextIds.unidade=3;
+  DB.nextIds.unidade=15;
   DB.nextIds.ponto=3000;
   DB.laudoSeq=DB.laudoSeq||{};
   DB.laudoSeq['001']=DB.laudoSeq['001']||0;
   DB.laudoSeq['014']=DB.laudoSeq['014']||0;
 
-  function cqActiveUnitId(){
-    if(!SESSION) return 1;
-    var sel=document.getElementById('cq-unit-select');
-    if(sel && sel.value) return parseInt(sel.value,10);
-    return SESSION.unidades && SESSION.unidades.length ? SESSION.unidades[0] : 1;
-  }
-  window.cqActiveUnitId=cqActiveUnitId;
+  /* cqActiveUnitId: reads window.CQ_UNIT set by sidebar selector */
+  window.cqActiveUnitId=function(){ return window.CQ_UNIT||(SESSION&&SESSION.unidades&&SESSION.unidades[0])||1; };
   function cqAllowedPoint(p){
     if(!SESSION) return true;
     if(!p.unidadeId) return true;
@@ -4547,7 +4428,7 @@ function cqVRLabelPlugin(){
     var wrap=document.createElement('div');
     wrap.style.display='flex';wrap.style.alignItems='center';wrap.style.gap='6px';
     wrap.innerHTML='<label style="font-size:11px;color:var(--muted);font-weight:600">Unidade</label><select id="cq-unit-select" style="width:220px;font-size:11px;padding:5px 8px">'+opts+'</select>';
-    ta.prepend(wrap);
+    /* unit selector moved to sidebar */;
     var sel=document.getElementById('cq-unit-select');
     sel.value=String((SESSION.unidades&&SESSION.unidades[0])||1);
     sel.onchange=function(){
@@ -4558,99 +4439,6 @@ function cqVRLabelPlugin(){
     };
   }
 
-  var oldDoLogin=window.doLogin;
-  window.doLogin=function(){ oldDoLogin(); cqRenderUnitSelector(); };
-  var oldNav=window.nav;
-  window.nav=function(p,el){ oldNav(p,el); cqRenderUnitSelector(); };
-
-  var oldApplyPerms=window.applyPerms;
-  window.applyPerms=function(){
-    oldApplyPerms();
-    if(SESSION && SESSION.perfil==='analista'){ var nd=document.getElementById('n-dash'); if(nd) nd.classList.remove('off'); }
-  };
-
-  window.onPontoNum=function(){
-    var num=parseInt(document.getElementById('c-pnum').value,10);
-    var p=DB.pontos.find(function(x){return x.num===num && x.unidadeId===cqActiveUnitId();});
-    if(!p){
-      document.getElementById('c-pnome').value=num?'Não encontrado nesta unidade':'';
-      document.getElementById('c-pid').value='';
-      document.getElementById('c-acard').style.display='none';var _ph=document.getElementById('c-acard-placeholder');if(_ph)_ph.style.display='flex';;
-      return;
-    }
-    if(p.ativo===false){alert('Este ponto está desativado.');document.getElementById('c-pnome').value='';document.getElementById('c-pid').value='';return;}
-    document.getElementById('c-pnome').value=p.nome;
-    document.getElementById('c-pid').value=p.id;
-    document.getElementById('lote-r').textContent=p.req&&p.req.lote?'*':'';
-    document.getElementById('val-r').textContent=p.req&&p.req.validade?'*':'';
-    var la=document.getElementById('c-laudo'); if(la) la.value='Automático ao salvar';
-    renderRess(p.id,null);
-    document.getElementById('c-acard').style.display='block';(function(){var _p=document.getElementById('c-acard-placeholder');if(_p)_p.style.display='none';})();
-  };
-
-  var oldCol=renders.col;
-  renders.col=function(){
-    oldCol();
-    var u=DB.unidades.find(function(x){return x.id===cqActiveUnitId();});
-    var cu=document.getElementById('c-unid'); if(cu&&u) cu.value=u.cod+' — '+u.nome;
-    var la=document.getElementById('c-laudo'); if(la){la.value='';la.placeholder='Automático ao salvar';}
-  };
-
-  var oldSalvar=window.salvarColeta;
-  window.salvarColeta=function(){
-    var u=DB.unidades.find(function(x){return x.id===cqActiveUnitId();});
-    if(u && document.getElementById('c-unid')) document.getElementById('c-unid').value=u.cod+' — '+u.nome;
-    oldSalvar();
-  };
-
-  var oldHist=renders.hist;
-  renders.hist=function(){
-    oldHist();
-    var hf=document.getElementById('hf-p');
-    if(hf) hf.innerHTML='<option value="">Todos pontos</option>'+DB.pontos.filter(cqUnitPoint).map(function(p){return '<option value="'+p.id+'">'+pLabel(p)+'</option>';}).join('');
-    renderHist();
-  };
-  var oldRenderHist=window.renderHist;
-  window.renderHist=function(){
-    oldRenderHist();
-    var uid=cqActiveUnitId();
-    document.querySelectorAll('#hist-body tr').forEach(function(row){});
-  };
-
-  var oldRel=renders.rel;
-  renders.rel=function(){
-    oldRel();
-    var rp=document.getElementById('rp');
-    if(rp) rp.innerHTML='<option value="">Todos</option>'+DB.pontos.filter(cqUnitPoint).map(function(p){return '<option value="'+p.id+'">'+pLabel(p)+'</option>';}).join('');
-    renderRel();
-  };
-
-  window.refreshIndPontos=function(){
-    var showInactive=document.getElementById('ind-show-inactive')&&document.getElementById('ind-show-inactive').checked;
-    var list=DB.pontos.filter(cqUnitPoint).filter(function(p){return showInactive || p.ativo!==false;});
-    var el=document.getElementById('ind-p');
-    if(el) el.innerHTML='<option value="">Selecione o ponto...</option>'+list.map(function(p){return '<option value="'+p.id+'">'+(p.ativo===false?'[Inativo] ':'')+pLabel(p)+'</option>';}).join('');
-  };
-
-  var oldPon=renders.pon;
-  renders.pon=function(){
-    var showInactive=document.getElementById('pon-show-inactive')&&document.getElementById('pon-show-inactive').checked;
-    var list=DB.pontos.filter(cqUnitPoint).filter(function(p){return showInactive || p.ativo!==false;});
-    var grpLabel={producao:'<span class="bx bana">Produção</span>',armazem:'<span class="bx binfo">Armazém</span>',ambos:'<span class="bx bvr">Prod+Arm</span>'};
-    var body=document.getElementById('pon-body');
-    if(body) body.innerHTML=list.map(function(p){
-      var cfgs=gPAs(p.id);
-      var tags=cfgs.map(function(cfg){var a=gA(cfg.analiseId);return a?'<span class="tag">'+a.nome+(cfg.vr?' ★':'')+'</span>':'';}).join('');
-      var ativo=p.ativo!==false;
-      var badge=ativo?'<span class="bx bok">Ativo</span>':'<span class="bx bnok">Inativo</span>';
-      var btnToggle=ativo?'<button class="btn btn-d btn-s" onclick="togglePon('+p.id+',false)" title="Desativar"><i class="ti ti-eye-off"></i></button>':'<button class="btn btn-p btn-s" onclick="togglePon('+p.id+',true)" title="Reativar"><i class="ti ti-eye"></i></button>';
-      var btnHist='<button class="btn btn-s" onclick="abrirHistPadrao('+p.id+')" title="Histórico de padrões"><i class="ti ti-history"></i></button>';
-      return '<tr style="'+(ativo?'':'opacity:.55')+'"><td>'+p.num+'</td><td><strong>'+p.nome+'</strong><br><span style="font-size:10px;color:#888">'+(DB.unidades.find(function(u){return u.id===p.unidadeId;})||{cod:''}).cod+'</span></td><td style="white-space:normal">'+tags+'</td><td>'+(p.vrGroup?grpLabel[p.vrGroup]||'<span class="bx bgray">—</span>':'<span class="bx bgray">Não</span>')+'</td><td>'+badge+'</td><td style="display:flex;gap:4px;white-space:nowrap">'+btnHist+btnToggle+'</td></tr>';
-    }).join('')||'<tr><td colspan="6" class="empty">Nenhum ponto</td></tr>';
-  };
-
-  var oldDash=renders.dash;
-  renders.dash=function(){ oldDash(); document.getElementById('m-p').textContent=DB.pontos.filter(function(p){return p.ativo!==false&&cqAllowedPoint(p);}).length; };
 })();
 /* ===== FIM CADASTROS OFICIAIS ===== */
 
@@ -4711,7 +4499,6 @@ function cqVRLabelPlugin(){
     var tipo=document.getElementById('ma-un').value.trim();
     if(!nome||!tipo)return alert('Preencha nome e tipo de resultado.');
     DB.analises.push({id:DB.nextIds.analise++,nome:nome,unidade:'',tipoResultado:tipo,ativo:true,dataDesativacao:null});
-    apiPost('/api/analises', {nome:nome, unidade:un});
     closeM('m-ana');renders.ana();
   };
 
@@ -5894,7 +5681,7 @@ function renderVRRelatorio(){
     wrap.id='cq-unit-wrap';
     wrap.style.cssText='display:flex;align-items:center;gap:6px;margin-right:4px';
     wrap.innerHTML='<label style="font-size:11px;color:var(--muted);font-weight:600">Unidade</label><select id="cq-unit-select" style="width:220px;font-size:11px;padding:5px 8px">'+opts+'</select>';
-    ta.insertBefore(wrap,ta.firstChild);
+    /* unit selector moved to sidebar */;
     var sel=document.getElementById('cq-unit-select');
     var id=setUnitId(getUnitId());
     sel.value=String(id);
@@ -7559,7 +7346,7 @@ function renderVRRelatorio(){
     var manuais=[];
     activeCfgs(pid).forEach(function(cfg){var f=cfg.formulaId?formulaById(cfg.formulaId):null;var a=typeof gA==='function'?gA(cfg.analiseId):null;var res=el('res-'+cfg.analiseId);if(f&&res&&res.getAttribute('data-manual')==='1')manuais.push((a?a.nome:'Análise')+' ('+(f.cod||'F')+')');});
     if(manuais.length&&!confirm('Existem resultados manuais em análises com fórmula:\n\n- '+manuais.join('\n- ')+'\n\nConfirmar o lançamento manual?'))return;
-    var un=DB.unidades.find(function(x){return SESSION.unidades.indexOf(x.id)>=0;});
+    var un=DB.unidades.find(function(x){return x.id===(window.CQ_UNIT||cqActiveUnitId());});
     if(typeof atualizarSequenciaLaudos==='function')atualizarSequenciaLaudos();
     var tipo=(el('c-glob')&&el('c-glob').checked)?'Global':'Pontual';
     var dataColeta=(el('c-data')||{}).value||new Date().toISOString().slice(0,10);
@@ -7707,7 +7494,7 @@ function renderVRRelatorio(){
 
     if(manuais.length&&!confirm('Existem resultados manuais em análises configuradas com fórmula:\n\n- '+manuais.join('\n- ')+'\n\nConfirmar o lançamento manual?'))return;
 
-    var un=(DB.unidades||[]).find(function(x){return SESSION&&SESSION.unidades&&SESSION.unidades.indexOf(x.id)>=0;});
+    var un=(DB.unidades||[]).find(function(x){return x.id===(window.CQ_UNIT||cqActiveUnitId());});
     if(typeof atualizarSequenciaLaudos==='function')atualizarSequenciaLaudos();
     var tipo=(el('c-glob')&&el('c-glob').checked)?'Global':'Pontual';
     var horaMin=((el('c-hora')&&el('c-hora').value)||'').slice(0,5);
@@ -7903,7 +7690,7 @@ function renderVRRelatorio(){
     }
     if(manuais.length&&!confirm('Existem resultados manuais em análises configuradas com fórmula:\n\n- '+manuais.join('\n- ')+'\n\nConfirmar o lançamento manual?'))return;
 
-    var un=(DB.unidades||[]).find(function(x){return SESSION&&SESSION.unidades&&SESSION.unidades.indexOf(x.id)>=0;});
+    var un=(DB.unidades||[]).find(function(x){return x.id===(window.CQ_UNIT||cqActiveUnitId());});
     var tipo=(el('c-glob')&&el('c-glob').checked)?'Global':'Pontual';
     var horaMin=((el('c-hora')&&el('c-hora').value)||'').slice(0,5);
     if(!horaMin){var hn=new Date();horaMin=pad2(hn.getHours())+':'+pad2(hn.getMinutes());if(el('c-hora'))el('c-hora').value=horaMin;}
@@ -8846,6 +8633,659 @@ function renderVRRelatorio(){
   });
 })();
 /* ===== FIM PATCH: SENHAS E LOGIN SEM CREDENCIAIS EXPOSTAS ===== */
+
+/* ===== DASHBOARD PRODUCAO ===== */
+(function(){
+var LOGO_B64='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';
+var DASH_PROD_ACTIVE=false;
+var dashProdChart=null;
+var dashProdScCharts={};
+var dashProdTimer=null;
+var dashProdCountdown=300;
+
+function showDashProd(){
+  DASH_PROD_ACTIVE=true;
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app').style.display='none';
+  var el=document.getElementById('dash-prod-screen');
+  if(!el){injectDashProd();el=document.getElementById('dash-prod-screen');}
+  el.style.display='flex';
+  dashProdRender();
+  dashProdStartTimer();
+}
+function hideDashProd(){
+  DASH_PROD_ACTIVE=false;
+  var el=document.getElementById('dash-prod-screen');
+  if(el)el.style.display='none';
+  if(dashProdTimer)clearInterval(dashProdTimer);
+  SESSION=null;
+  document.getElementById('login-screen').style.display='flex';
+  document.getElementById('lp').value='';
+}
+function injectDashProd(){
+  var div=document.createElement('div');
+  div.id='dash-prod-screen';
+  div.style.cssText='display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;flex-direction:column;background:#f0efe8;font-family:system-ui,sans-serif;box-sizing:border-box;overflow:hidden;z-index:9999';
+  div.innerHTML='<style>#dash-prod-screen *{box-sizing:border-box}#dp-topbar{background:#185FA5;color:#fff;padding:5px 12px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}#dp-topbar .dp-left{display:flex;align-items:center;gap:8px}#dp-topbar .dp-logo{height:30px;width:30px;background:#fff;border-radius:5px;padding:2px}#dp-topbar .dp-logo img{height:26px;width:auto;object-fit:contain}#dp-topbar .dp-title{font-size:13px;font-weight:700;color:#fff}#dp-topbar .dp-sub{font-size:9px;color:rgba(255,255,255,.65);margin-top:1px}#dp-topbar .dp-right{display:flex;align-items:center;gap:10px;font-size:10px;color:#fff}#dp-topbar .dp-badge{background:rgba(255,255,255,.15);padding:2px 8px;border-radius:20px}#dp-topbar .dp-sair{background:rgba(200,40,40,.25);border:1px solid rgba(200,40,40,.4);color:#ffb3b3;font-size:10px;padding:2px 8px;border-radius:4px;cursor:pointer}#dp-tabs{background:#0C447C;display:flex;gap:6px;padding:0 12px;flex-shrink:0}.dp-tab{padding:7px 18px;font-size:11px;font-weight:700;color:rgba(255,255,255,.5);cursor:pointer;border-bottom:3px solid transparent;text-transform:uppercase;letter-spacing:.4px;border-radius:4px 4px 0 0;margin-top:4px;transition:all .15s}.dp-tab:hover{color:rgba(255,255,255,.85);background:rgba(255,255,255,.07)}.dp-tab.active{color:#fff;border-bottom:3px solid #fff;background:rgba(255,255,255,.12)}#dp-content{flex:1;overflow:hidden;display:flex;flex-direction:column;padding:8px;gap:8px}.dp-screen{display:none;flex-direction:column;gap:8px;flex:1;overflow:hidden}.dp-screen.active{display:flex}.dp-card{background:#fff;border:.5px solid #d3d1c7;border-radius:8px;overflow:hidden;display:flex;flex-direction:column}.dp-ch{background:#185FA5;color:#fff;padding:6px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;flex-shrink:0;display:flex;justify-content:space-between;align-items:center}.dp-cb{padding:8px 12px;flex:1;overflow:auto}.dp-kpi-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}.dp-kpi-a{background:#E6F1FB;border-radius:6px;padding:8px 14px}.dp-kpi-a .kl{font-size:10px;color:#0C447C;font-weight:700;margin-bottom:2px}.dp-kpi-a .kv{font-size:26px;font-weight:700;color:#0C447C;line-height:1}.dp-kpi-a .ks{font-size:10px;color:#185FA5;margin-top:2px}.dp-kpi-p{background:#FAEEDA;border-radius:6px;padding:8px 14px}.dp-kpi-p .kl{font-size:10px;color:#633806;font-weight:700;margin-bottom:2px}.dp-kpi-p .kv{font-size:26px;font-weight:700;color:#633806;line-height:1}.dp-kpi-p .ks{font-size:10px;color:#854F0B;margin-top:2px}.dp-leg{display:flex;gap:12px;margin-bottom:6px}.dp-leg span{display:flex;align-items:center;gap:4px;font-size:10px;color:#5F5E5A}.dp-leg i{width:10px;height:10px;border-radius:2px;display:inline-block}.dp-pts-grid{display:grid;grid-template-columns:repeat(9,1fr);gap:5px;margin-bottom:8px}.dp-pt-btn{background:#fff;border:1.5px solid #d3d1c7;border-radius:6px;padding:5px 4px;cursor:pointer;text-align:center;transition:all .15s}.dp-pt-btn:hover{border-color:#185FA5;background:#f5f9fe}.dp-pt-btn.sel{border-color:#185FA5;background:#E6F1FB}.dp-pt-name{font-size:9px;font-weight:700;color:#1a1a1a;line-height:1.2;margin-bottom:2px}.dp-pt-info{font-size:8px;color:#888;line-height:1.3}.dp-pt-ok{color:#27500A;font-weight:700;font-size:9px}.dp-pt-nok{color:#791F1F;font-weight:700;font-size:9px}.dp-charts-grid{display:grid;gap:6px}.dp-mini-wrap{position:relative;height:130px}.dp-ana-lbl{font-size:9px;font-weight:700;text-align:center;color:#444;margin-bottom:3px;text-transform:uppercase;letter-spacing:.3px}.dp-tbl{width:100%;border-collapse:collapse;font-size:9px;table-layout:fixed}.dp-tbl th{background:#2C2C2A;color:#fff;padding:4px 5px;text-align:center;font-size:8px;font-weight:700;border:1px solid #444}.dp-tbl th:first-child{text-align:left;width:88px}.dp-tbl td{padding:3px 5px;border:.5px solid #e8e8e4;text-align:center;color:#aaa;font-size:9px}.dp-tbl td:first-child{text-align:left;background:#fafaf8;font-weight:600;color:#444}.dp-tbl td.cur{color:#1a1a1a!important;font-weight:700}.dp-tbl tr.tot td{background:#f0efe8;font-weight:700}.dp-ok{color:#27500A;font-weight:700}.dp-nok{color:#791F1F;font-weight:700}.dp-up{color:#27500A;font-weight:700}.dp-dn{color:#791F1F;font-weight:700}.dp-ne{color:#888}.dp-bloco{margin-bottom:10px}.dp-bloco-hdr{font-size:10px;font-weight:700;color:#fff;background:#185FA5;padding:5px 12px;border-radius:6px 6px 0 0;display:flex;justify-content:space-between;align-items:center}.dp-bloco-body{border:.5px solid #d3d1c7;border-top:none;border-radius:0 0 6px 6px;overflow:hidden}.dp-prog-wrap{padding:5px 10px;background:#fafaf8;border-bottom:.5px solid #e8e8e4}.dp-prog-bar{height:5px;background:#e8e8e4;border-radius:3px;overflow:hidden}.dp-prog-fill{height:5px;border-radius:3px}.dp-two-col{display:grid;grid-template-columns:2fr 1fr}.dp-sec-lbl{font-size:8px;font-weight:700;color:#444;padding:3px 8px;background:#f5f5f3;text-transform:uppercase;letter-spacing:.3px;border-bottom:.5px solid #e8e8e4}</style>'
+  +'<div id="dp-topbar"><div class="dp-left"><div style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;background:rgba(255,255,255,.2);border-radius:5px;font-size:16px;font-weight:700;color:#fff;flex-shrink:0">CQ</div><div style="margin-left:8px"><div class="dp-title">CQ System — Dashboard Producao</div><div class="dp-sub">Celia Alimentos Ltda - Meleiro/SC</div></div></div><div class="dp-right"><span id="dp-mes"></span>&nbsp;<span id="dp-hora"></span>&nbsp;<span class="dp-badge" id="dp-prox">Prox. em 5:00</span>&nbsp;<span class="dp-sair" onclick="hideDashProd()">Sair</span></div></div>'
+  +'<div id="dp-tabs"><div class="dp-tab active" id="dp-t1" onclick="dpGoTab(1)">% Conformidade Acumulado</div><div class="dp-tab" id="dp-t2" onclick="dpGoTab(2)">Graficos por Ponto VR</div><div class="dp-tab" id="dp-t3" onclick="dpGoTab(3)">Conformidade por Ponto</div></div>'
+  +'<div id="dp-content">'
+    +'<div id="dp-s1" class="dp-screen active"><div class="dp-card" style="flex:1"><div class="dp-ch">% de conformidade acumulado - <span id="dp-ano"></span></div><div class="dp-cb"><div class="dp-kpi-row"><div class="dp-kpi-a"><div class="kl">Media acumulada - Armazem</div><div class="kv" id="dp-kpi-arm">-</div><div class="ks" id="dp-kpi-arm-sub">-</div></div><div class="dp-kpi-p"><div class="kl">Media acumulada - Producao</div><div class="kv" id="dp-kpi-prod">-</div><div class="ks" id="dp-kpi-prod-sub">-</div></div></div><div class="dp-leg"><span><i style="background:#185FA5"></i>Armazem</span><span><i style="background:#ED7D31"></i>Producao</span><span style="display:flex;align-items:center;gap:4px;font-size:10px;color:#5F5E5A"><span style="width:18px;height:2px;border-top:2px dashed #A32D2D;display:inline-block"></span>Meta 85%</span></div><div style="position:relative;height:260px"><canvas id="dp-conf-chart" role="img" aria-label="Conformidade acumulada">.</canvas></div></div></div></div>'
+    +'<div id="dp-s2" class="dp-screen"><div class="dp-card" style="flex:1;overflow:hidden;display:flex;flex-direction:column"><div class="dp-ch">Graficos por ponto VR - <span id="dp-meslab"></span></div><div class="dp-cb" style="overflow:hidden;display:flex;flex-direction:column;gap:8px"><div class="dp-pts-grid" id="dp-pts-grid"></div><div style="font-size:10px;font-weight:700;color:#185FA5;text-transform:uppercase;letter-spacing:.4px" id="dp-pt-title"></div><div class="dp-charts-grid" id="dp-charts-grid" style="flex:1;overflow:hidden"></div></div></div></div>'
+    +'<div id="dp-s3" class="dp-screen"><div style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:10px" id="dp-conf-ponto"></div></div>'
+  +'</div>'
+  +'<div style="text-align:center;font-size:10px;color:#888;padding:3px 0;background:#f0efe8;flex-shrink:0">CQ System - Dashboard Producao - Atualizacao automatica a cada 5 minutos</div>';
+  document.body.appendChild(div);
+}
+window.dpGoTab=function(n){for(var i=1;i<=3;i++){document.getElementById('dp-t'+i).classList.toggle('active',i===n);document.getElementById('dp-s'+i).classList.toggle('active',i===n);}if(n===2)dpRenderGraficos();if(n===3)dpRenderConfPonto();};
+function dashProdStartTimer(){
+  if(dashProdTimer)clearInterval(dashProdTimer);
+  dashProdCountdown=300;
+  dashProdTimer=setInterval(function(){
+    dashProdCountdown--;
+    var m=Math.floor(dashProdCountdown/60),s=dashProdCountdown%60;
+    var el=document.getElementById('dp-prox');if(el)el.textContent='Prox. em '+m+':'+(s<10?'0':'')+s;
+    var h=document.getElementById('dp-hora');if(h)h.textContent=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    if(dashProdCountdown<=0){dashProdCountdown=300;dashProdRender();}
+  },1000);
+}
+function calcGrupoMes(pontos,ym){
+  var col=DB.coletas.filter(function(c){return c.data&&c.data.slice(0,7)===ym;});
+  if(!col.length)return null;
+  var scores=[];
+  pontos.forEach(function(ponto){
+    var pas=DB.pontoAnalises.filter(function(pa){return pa.pontoId===ponto.id&&pa.vr;});
+    if(!pas.length)return;
+    var pcol=col.filter(function(c){return c.pontoId===ponto.id;});
+    if(!pcol.length)return;
+    var at=0,tot=0;
+    pcol.forEach(function(c){pas.forEach(function(pa){
+      var r=c.resultados&&c.resultados.find(function(x){return x.analiseId===pa.analiseId;});
+      if(!r)return;tot++;
+      var pad=getPadraoNaData(ponto.id,pa.analiseId,c.data);
+      var ok=true;if(pad.min!==null&&r.valor<pad.min)ok=false;if(pad.max!==null&&r.valor>pad.max)ok=false;if(ok)at++;
+    });});
+    if(tot>0)scores.push(at/tot*100);
+  });
+  if(!scores.length)return null;
+  return parseFloat((scores.reduce(function(s,v){return s+v;},0)/scores.length).toFixed(2));
+}
+function dashProdRender(){
+  var now=new Date();
+  var ano=now.getFullYear();
+  var mesYM=ano+'-'+(String(now.getMonth()+1).padStart(2,'0'));
+  var mesLabel=now.toLocaleDateString('pt-BR',{month:'short',year:'numeric'}).replace(' de ',' ').replace(/^\w/,function(c){return c.toUpperCase();});
+  var el;
+  el=document.getElementById('dp-mes');if(el)el.textContent=mesLabel;
+  el=document.getElementById('dp-hora');if(el)el.textContent=now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  el=document.getElementById('dp-ano');if(el)el.textContent=ano;
+  el=document.getElementById('dp-meslab');if(el)el.textContent=mesLabel;
+  var months=[];for(var m=1;m<=12;m++)months.push(ano+'-'+(String(m).padStart(2,'0')));
+  var armPontos=DB.pontos.filter(function(p){return p.vr&&(p.vrGroup==='armazem'||p.vrGroup==='ambos')&&p.ativo;});
+  var prodPontos=DB.pontos.filter(function(p){return p.vr&&(p.vrGroup==='producao'||p.vrGroup==='ambos')&&p.ativo;});
+  var armData=months.map(function(ym){return calcGrupoMes(armPontos,ym);});
+  var prodData=months.map(function(ym){return calcGrupoMes(prodPontos,ym);});
+  var armVals=armData.filter(function(v){return v!==null;});
+  var prodVals=prodData.filter(function(v){return v!==null;});
+  var armAvg=armVals.length?parseFloat((armVals.reduce(function(s,v){return s+v;},0)/armVals.length).toFixed(1)):null;
+  var prodAvg=prodVals.length?parseFloat((prodVals.reduce(function(s,v){return s+v;},0)/prodVals.length).toFixed(1)):null;
+  var periodoMes=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][now.getMonth()];
+  var periodo='Jan-'+periodoMes+' '+ano;
+  el=document.getElementById('dp-kpi-arm');if(el)el.textContent=armAvg!==null?armAvg.toFixed(1).replace('.',',')+'%':'-';
+  el=document.getElementById('dp-kpi-prod');if(el)el.textContent=prodAvg!==null?prodAvg.toFixed(1).replace('.',',')+'%':'-';
+  el=document.getElementById('dp-kpi-arm-sub');if(el)el.textContent=periodo;
+  el=document.getElementById('dp-kpi-prod-sub');if(el)el.textContent=periodo;
+  var mesLabels=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  var allVals=armData.concat(prodData).filter(function(v){return v!==null;});
+  var yMin=allVals.length?Math.max(0,Math.floor((Math.min.apply(null,allVals)-8)/5)*5):60;
+  var dlPlugin={id:'dpDl',afterDatasetsDraw:function(chart){
+    var ctx=chart.ctx;
+    var allPts=[];
+    chart.data.datasets.forEach(function(ds,i){
+      if(ds.label==='Meta')return;
+      var meta=chart.getDatasetMeta(i);if(meta.hidden)return;
+      meta.data.forEach(function(pt,j){
+        var val=ds.data[j];if(val===null||val===undefined)return;
+        allPts.push({x:pt.x,y:pt.y,val:val,color:ds.borderColor});
+      });
+    });
+    allPts.forEach(function(p,pi){
+      var offsetY=-7;
+      allPts.forEach(function(q,qi){
+        if(pi===qi)return;
+        if(Math.abs(p.x-q.x)<30&&Math.abs(p.y-q.y)<14){
+          offsetY=p.y>q.y?8:-20;
+        }
+      });
+      ctx.save();ctx.font='700 9px system-ui';ctx.fillStyle=p.color;
+      ctx.textAlign='center';ctx.textBaseline='bottom';
+      ctx.fillText(Number(p.val).toFixed(1)+'%',p.x,p.y+offsetY);ctx.restore();
+    });
+  }};
+  if(dashProdChart){try{dashProdChart.destroy();}catch(e){}}
+  var cc=document.getElementById('dp-conf-chart');
+  if(cc){
+    dashProdChart=new Chart(cc,{type:'line',plugins:[dlPlugin],data:{labels:mesLabels,datasets:[
+      {label:'Meta',data:months.map(function(){return 85;}),borderColor:'#A32D2D',borderWidth:1,borderDash:[5,4],pointRadius:0,fill:false,order:0},
+      {label:'Armazem',data:armData,borderColor:'#185FA5',backgroundColor:'transparent',fill:false,pointRadius:5,pointBackgroundColor:'#185FA5',tension:.3,borderWidth:2.5,spanGaps:false,order:1},
+      {label:'Producao',data:prodData,borderColor:'#ED7D31',backgroundColor:'transparent',fill:false,pointRadius:5,pointBackgroundColor:'#ED7D31',tension:.3,borderWidth:2.5,spanGaps:false,order:1}
+    ]},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:false}},scales:{
+      y:{min:yMin,max:105,ticks:{callback:function(v){return v+'%'},font:{size:9}},grid:{color:'rgba(0,0,0,.07)'}},
+      x:{ticks:{font:{size:9},autoSkip:false,maxRotation:0},grid:{display:false}}
+    }}});
+  }
+  dpRenderPtsGrid();
+}
+function calcPontoMes(pontoId,ym){
+  var col=DB.coletas.filter(function(c){return c.pontoId===pontoId&&c.data&&c.data.slice(0,7)===ym;});
+  if(!col.length)return null;
+  var pas=DB.pontoAnalises.filter(function(pa){return pa.pontoId===pontoId&&pa.vr;});
+  if(!pas.length)return null;
+  var at=0,tot=0;
+  col.forEach(function(c){pas.forEach(function(pa){
+    var r=c.resultados&&c.resultados.find(function(x){return x.analiseId===pa.analiseId;});
+    if(!r)return;tot++;
+    var pad=getPadraoNaData(pontoId,pa.analiseId,c.data);
+    var ok=true;if(pad.min!==null&&r.valor<pad.min)ok=false;if(pad.max!==null&&r.valor>pad.max)ok=false;if(ok)at++;
+  });});
+  return tot>0?parseFloat((at/tot*100).toFixed(1)):null;
+}
+function calcSemanal(pontoId,offsetWeeks){
+  var now=new Date();var dow=now.getDay();
+  var startCur=new Date(now);startCur.setDate(now.getDate()-dow);startCur.setHours(0,0,0,0);
+  var start=new Date(startCur);start.setDate(start.getDate()-offsetWeeks*7);
+  var end=new Date(start);end.setDate(start.getDate()+6);
+  var s=start.toISOString().slice(0,10),e=end.toISOString().slice(0,10);
+  var col=DB.coletas.filter(function(c){return c.pontoId===pontoId&&c.data&&c.data>=s&&c.data<=e;});
+  if(!col.length)return null;
+  var pas=DB.pontoAnalises.filter(function(pa){return pa.pontoId===pontoId&&pa.vr;});
+  if(!pas.length)return null;
+  var at=0,tot=0;
+  col.forEach(function(c){pas.forEach(function(pa){
+    var r=c.resultados&&c.resultados.find(function(x){return x.analiseId===pa.analiseId;});
+    if(!r)return;tot++;
+    var pad=getPadraoNaData(pontoId,pa.analiseId,c.data);
+    var ok=true;if(pad.min!==null&&r.valor<pad.min)ok=false;if(pad.max!==null&&r.valor>pad.max)ok=false;if(ok)at++;
+  });});
+  return tot>0?parseFloat((at/tot*100).toFixed(1)):null;
+}
+function dpRenderPtsGrid(){
+  var now=new Date();
+  var mesYM=now.getFullYear()+'-'+(String(now.getMonth()+1).padStart(2,'0'));
+  var pontos=DB.pontos.filter(function(p){return p.vr&&p.ativo;});
+  var grid=document.getElementById('dp-pts-grid');if(!grid)return;
+  var col=DB.coletas.filter(function(c){return c.data&&c.data.slice(0,7)===mesYM;});
+  grid.innerHTML=pontos.map(function(p,idx){
+    var pcol=col.filter(function(c){return c.pontoId===p.id;});
+    var pas=DB.pontoAnalises.filter(function(pa){return pa.pontoId===p.id&&pa.vr;});
+    var nAm=pcol.length;
+    var conf=null;
+    if(pcol.length&&pas.length){
+      var at=0,tot=0;
+      pcol.forEach(function(c){pas.forEach(function(pa){
+        var r=c.resultados&&c.resultados.find(function(x){return x.analiseId===pa.analiseId;});
+        if(!r)return;tot++;
+        var pad=getPadraoNaData(p.id,pa.analiseId,c.data);
+        var ok=true;if(pad.min!==null&&r.valor<pad.min)ok=false;if(pad.max!==null&&r.valor>pad.max)ok=false;if(ok)at++;
+      });});
+      if(tot>0)conf=parseFloat((at/tot*100).toFixed(1));
+    }
+    var confStr=conf!==null?conf.toFixed(1).replace('.',',')+'%':'-';
+    var cls=conf!==null?(conf>=85?'dp-pt-ok':'dp-pt-nok'):'dp-pt-info';
+    return '<div class="dp-pt-btn'+(idx===0?' sel':'')+'" onclick="dpSelPt(this,'+p.id+')" data-pid="'+p.id+'"><div class="dp-pt-name">'+p.nome+'</div><div class="dp-pt-info">'+nAm+' amostras</div><div class="'+cls+'">'+confStr+'</div></div>';
+  }).join('');
+  if(pontos.length){var first=grid.querySelector('.dp-pt-btn');if(first)dpSelPtById(pontos[0].id);}
+}
+function dpSelPt(el,pid){document.querySelectorAll('#dp-pts-grid .dp-pt-btn').forEach(function(b){b.classList.remove('sel');});el.classList.add('sel');dpSelPtById(pid);}
+window.dpSelPt=dpSelPt;
+function dpSelPtById(pid){
+  var ponto=DB.pontos.find(function(p){return p.id===pid;});if(!ponto)return;
+  var now=new Date();
+  var mesYM=now.getFullYear()+'-'+(String(now.getMonth()+1).padStart(2,'0'));
+  var tit=document.getElementById('dp-pt-title');
+  if(tit)tit.textContent=ponto.nome+' - '+now.toLocaleDateString('pt-BR',{month:'short',year:'numeric'}).replace(' de ',' ');
+  var pas=DB.pontoAnalises.filter(function(pa){return pa.pontoId===pid&&pa.vr;});
+  var col=DB.coletas.filter(function(c){return c.pontoId===pid&&c.data&&c.data.slice(0,7)===mesYM;}).sort(function(a,b){return a.data>b.data?1:-1;});
+  var grid=document.getElementById('dp-charts-grid');if(!grid)return;
+  var n=pas.length;
+  var cols=n<=2?n:n<=4?4:n<=6?3:4;
+  grid.style.gridTemplateColumns='repeat('+cols+',1fr)';
+  grid.innerHTML=pas.map(function(pa,i){
+    return '<div><div class="dp-ana-lbl">'+((DB.analises.find(function(a){return a.id===pa.analiseId;})||{}).nome||'-')+'</div><div class="dp-mini-wrap" style="height:130px"><canvas id="dp-sc-'+i+'" role="img" aria-label="Grafico">.</canvas></div></div>';
+  }).join('');
+  setTimeout(function(){
+    pas.forEach(function(pa,i){
+      var cc=document.getElementById('dp-sc-'+i);if(!cc)return;
+      if(dashProdScCharts[i]){try{dashProdScCharts[i].destroy();}catch(e){}}
+      var pts=col.map(function(c){
+        var r=c.resultados&&c.resultados.find(function(x){return x.analiseId===pa.analiseId;});
+        if(!r)return null;
+        var d=new Date(c.data+'T00:00:00');
+        var lbl=(d.getDate())+'/'+(d.getMonth()+1)+(c.hora?' '+c.hora.slice(0,5):'');
+        return{x:lbl,y:r.valor};
+      }).filter(Boolean);
+      var pad=getPadraoNaData(pid,pa.analiseId,mesYM+'-01');
+      var pMin=pad.min,pMax=pad.max;
+      var allY=pts.map(function(p){return p.y;});
+      if(pMin!==null)allY.push(pMin);if(pMax!==null)allY.push(pMax);
+      var yMin=allY.length?parseFloat((Math.min.apply(null,allY)*0.95).toFixed(2)):0;
+      var yMax=allY.length?parseFloat((Math.max.apply(null,allY)*1.05).toFixed(2)):10;
+      var datasets=[{type:'scatter',label:'Amostras',data:pts,backgroundColor:'#185FA5',pointRadius:4,order:3}];
+      if(pMin!==null&&pMax!==null){
+        datasets.push({type:'line',label:'Max',data:pts.length?pts.map(function(p){return{x:p.x,y:pMax};}):([{x:'',y:pMax}]),borderColor:'#A32D2D',borderWidth:1,borderDash:[4,3],pointRadius:0,fill:false,order:2});
+        datasets.push({type:'line',label:'Min',data:pts.length?pts.map(function(p){return{x:p.x,y:pMin};}):([{x:'',y:pMin}]),borderColor:'#A32D2D',borderWidth:1,borderDash:[4,3],pointRadius:0,backgroundColor:'rgba(76,175,80,.15)',fill:'-1',order:1});
+      } else if(pMin!==null){
+        datasets.push({type:'line',label:'Min',data:pts.length?pts.map(function(p){return{x:p.x,y:pMin};}):([{x:'',y:pMin}]),borderColor:'#A32D2D',borderWidth:1,borderDash:[4,3],pointRadius:0,fill:false,order:2});
+      } else if(pMax!==null){
+        datasets.push({type:'line',label:'Max',data:pts.length?pts.map(function(p){return{x:p.x,y:pMax};}):([{x:'',y:pMax}]),borderColor:'#A32D2D',borderWidth:1,borderDash:[4,3],pointRadius:0,fill:false,order:2});
+      }
+      dashProdScCharts[i]=new Chart(cc,{data:{datasets:datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{title:function(items){return items[0]?items[0].label:'';},label:function(ctx){if(ctx.dataset.label==='Max'||ctx.dataset.label==='Min')return null;return ctx.parsed.y;}}}},scales:{
+        y:{min:yMin,max:yMax,ticks:{font:{size:7},maxTicksLimit:5},grid:{color:'rgba(0,0,0,.06)'}},
+        x:{type:'category',ticks:{font:{size:6},maxRotation:45,autoSkip:true,maxTicksLimit:14},grid:{display:false}}
+      }}});
+    });
+  },50);
+}
+function dpRenderGraficos(){dpRenderPtsGrid();}
+function dpRenderConfPonto(){
+  var now=new Date();var ano=now.getFullYear();var curM=now.getMonth();
+  var mesYM=ano+'-'+(String(curM+1).padStart(2,'0'));
+  var mesLabel=now.toLocaleDateString('pt-BR',{month:'short',year:'numeric'}).replace(' de ',' ');
+  var months=[];for(var m=1;m<=12;m++)months.push(ano+'-'+(String(m).padStart(2,'0')));
+  var mLabels=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  function blocoHtml(titulo,pontos){
+    var grpVals=[];
+    var rows=pontos.map(function(p){
+      var mesesHtml=months.map(function(ym,mi){
+        var v=calcPontoMes(p.id,ym);var isCur=mi===curM;
+        if(v!==null){var cls=isCur?'cur '+(v>=85?'dp-ok':'dp-nok'):(v>=85?'dp-ok':'dp-nok');return '<td class="'+cls+'">'+v.toFixed(1).replace('.',',')+'%</td>';}
+        return '<td class="'+(isCur?'cur':'')+'">-</td>';
+      }).join('');
+      var mediaVals=months.map(function(ym){return calcPontoMes(p.id,ym);}).filter(function(v){return v!==null;});
+      var media=mediaVals.length?parseFloat((mediaVals.reduce(function(s,v){return s+v;},0)/mediaVals.length).toFixed(1)):null;
+      if(media!==null)grpVals.push(media);
+      var ant=calcSemanal(p.id,1);var cur2=calcSemanal(p.id,0);
+      var evol=ant!==null&&cur2!==null?parseFloat((cur2-ant).toFixed(1)):null;
+      var evolSign=evol!==null?(evol>0?'+':''):''
+      var evolHtml=evol!==null?(evol>0?'<span class="dp-up">'+evolSign+evol.toFixed(1).replace('.',',')+'%</span>':evol<0?'<span class="dp-dn">'+evol.toFixed(1).replace('.',',')+'%</span>':'<span style="color:#1a1a1a;font-weight:700">0,0%</span>'):'<span class="dp-ne">-</span>';
+      var medStr=media!==null?media.toFixed(1).replace('.',',')+'%':'-';
+      var medCls=media!==null?(media>=85?'dp-ok':'dp-nok'):'';
+      var antStr=ant!==null?ant.toFixed(1).replace('.',',')+'%':'-';
+      var curStr=cur2!==null?cur2.toFixed(1).replace('.',',')+'%':'-';
+      return{nome:p.nome,mesesHtml:mesesHtml,media:media,medStr:medStr,medCls:medCls,ant:ant,cur:cur2,antStr:antStr,curStr:curStr,evolHtml:evolHtml};
+    });
+    var grpMedia=grpVals.length?parseFloat((grpVals.reduce(function(s,v){return s+v;},0)/grpVals.length).toFixed(1)):null;
+    var gAntV=[];pontos.forEach(function(p){var x=calcSemanal(p.id,1);if(x!==null)gAntV.push(x);});
+    var gCurV=[];pontos.forEach(function(p){var x=calcSemanal(p.id,0);if(x!==null)gCurV.push(x);});
+    var gAnt=gAntV.length?parseFloat((gAntV.reduce(function(s,v){return s+v;},0)/gAntV.length).toFixed(1)):null;
+    var gCur=gCurV.length?parseFloat((gCurV.reduce(function(s,v){return s+v;},0)/gCurV.length).toFixed(1)):null;
+    var gEvol=gAnt!==null&&gCur!==null?parseFloat((gCur-gAnt).toFixed(1)):null;
+    var gEvolHtml=gEvol!==null?(gEvol>0?'+'+gEvol.toFixed(1).replace('.',',')+'%':gEvol<0?gEvol.toFixed(1).replace('.',',')+'%':'0,0%'):'-';
+    var confStr=grpMedia!==null?grpMedia.toFixed(1).replace('.',',')+'%':'-';
+    var confColor=grpMedia!==null&&grpMedia>=85?'#27500A':'#791F1F';
+    var progW=grpMedia!==null?Math.min(grpMedia,100):0;
+    var thMes=mLabels.map(function(l,i){return i===curM?'<th style="color:#FFD700">'+l+' *</th>':'<th style="color:#888">'+l+'</th>';}).join('');
+    var bodyRows=rows.map(function(r){
+      return '<tr><td>'+r.nome+'</td>'+r.mesesHtml+'<td class="cur '+r.medCls+'">'+r.medStr+'</td></tr>';
+    }).join('');
+    var grpMesRows=months.map(function(ym,mi){
+      var vals=[];pontos.forEach(function(p){var x=calcPontoMes(p.id,ym);if(x!==null)vals.push(x);});
+      var v=vals.length?parseFloat((vals.reduce(function(s,x){return s+x;},0)/vals.length).toFixed(1)):null;
+      var isCur=mi===curM;
+      if(v!==null){var cls=isCur?'cur '+(v>=85?'dp-ok':'dp-nok'):(v>=85?'dp-ok':'dp-nok');return '<td class="'+cls+'">'+v.toFixed(1).replace('.',',')+'%</td>';}
+      return '<td class="'+(isCur?'cur':'')+'">-</td>';
+    }).join('');
+    var grpMedStr=grpMedia!==null?grpMedia.toFixed(1).replace('.',',')+'%':'-';
+    var grpMedCls=grpMedia!==null&&grpMedia>=85?'dp-ok':'dp-nok';
+    var evolRows=rows.map(function(r){
+      return '<tr><td>'+r.nome+'</td><td>'+r.antStr+'</td><td class="cur">'+r.curStr+'</td><td>'+r.evolHtml+'</td></tr>';
+    }).join('');
+    var gAntStr=gAnt!==null?gAnt.toFixed(1).replace('.',',')+'%':'-';
+    var gCurStr=gCur!==null?gCur.toFixed(1).replace('.',',')+'%':'-';
+    var barColor=grpMedia!==null&&grpMedia>=85?'#2E9B4E':'#E02020';
+    var totEvolCls=gEvol!==null?(gEvol>0?'dp-up':gEvol<0?'dp-dn':''):'dp-ne';
+    return '<div class="dp-bloco">'
+      +'<div class="dp-bloco-hdr"><span>'+titulo+' - '+mesLabel+'</span><span style="font-size:9px;opacity:.8">META 85%</span></div>'
+      +'<div class="dp-bloco-body">'
+        +'<div class="dp-prog-wrap"><div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px"><span style="font-weight:700;color:'+barColor+'">'+confStr+'</span><span style="color:#888">de conformidade - meta 85%</span></div><div class="dp-prog-bar"><div class="dp-prog-fill" style="width:'+progW+'%;background:'+barColor+'"></div></div></div>'
+        +'<div style="overflow-x:auto"><div style="display:flex;gap:0;min-width:700px">'
+          +'<div style="flex:1"><div class="dp-sec-lbl">Acumulado mensal</div><table class="dp-tbl" style="min-width:480px"><thead><tr><th>Local</th>'+thMes+'<th style="color:#fff">Media</th></tr></thead><tbody>'+bodyRows+'<tr class="tot"><td>% '+titulo+'</td>'+grpMesRows+'<td class="cur '+grpMedCls+'">'+grpMedStr+'</td></tr></tbody></table></div>'
+          +'<div style="width:20px;background:#f0efe8;border-left:.5px solid #d3d1c7;border-right:.5px solid #d3d1c7;flex-shrink:0"></div>'
+          +'<div style="flex:0 0 auto"><div class="dp-sec-lbl">Evolucao semanal</div><table class="dp-tbl" style="width:auto"><thead><tr><th>Local</th><th style="width:70px">Sem. ant.</th><th style="width:70px">Sem. atual</th><th style="width:70px">Evolucao</th></tr></thead><tbody>'+evolRows+'<tr class="tot"><td>% '+titulo+'</td><td>'+gAntStr+'</td><td class="cur">'+gCurStr+'</td><td class="'+totEvolCls+'">'+gEvolHtml+'</td></tr></tbody></table></div>'
+        +'</div></div>'
+      +'</div>'
+    +'</div>';
+  }
+  var prodPontos=DB.pontos.filter(function(p){return p.vr&&(p.vrGroup==='producao'||p.vrGroup==='ambos')&&p.ativo;});
+  var armPontos=DB.pontos.filter(function(p){return p.vr&&(p.vrGroup==='armazem'||p.vrGroup==='ambos')&&p.ativo;});
+  var cont=document.getElementById('dp-conf-ponto');
+  if(cont)cont.innerHTML=blocoHtml('Producao',prodPontos)+blocoHtml('Armazem',armPontos);
+}
+window.showDashProd=showDashProd;
+window.hideDashProd=hideDashProd;
+
+// Render inline no dashboard padrão
+window.dashProdRenderInline=function(){
+  var now=new Date();
+  var ano=now.getFullYear();
+  var mesLabel=now.toLocaleDateString('pt-BR',{month:'short',year:'numeric'}).replace(' de ',' ').replace(/^\w/,function(c){return c.toUpperCase();});
+  var months=[];for(var m=1;m<=12;m++)months.push(ano+'-'+(String(m).padStart(2,'0')));
+  var mesLabels=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  var armPontos=DB.pontos.filter(function(p){return p.vr&&(p.vrGroup==='armazem'||p.vrGroup==='ambos')&&p.ativo;});
+  var prodPontos=DB.pontos.filter(function(p){return p.vr&&(p.vrGroup==='producao'||p.vrGroup==='ambos')&&p.ativo;});
+  var armData=months.map(function(ym){return calcGrupoMes(armPontos,ym);});
+  var prodData=months.map(function(ym){return calcGrupoMes(prodPontos,ym);});
+  var armVals=armData.filter(function(v){return v!==null;});
+  var prodVals=prodData.filter(function(v){return v!==null;});
+  var armAvg=armVals.length?parseFloat((armVals.reduce(function(s,v){return s+v;},0)/armVals.length).toFixed(1)):null;
+  var prodAvg=prodVals.length?parseFloat((prodVals.reduce(function(s,v){return s+v;},0)/prodVals.length).toFixed(1)):null;
+  var periodoMes=mesLabels[now.getMonth()];
+  var periodo='Jan-'+periodoMes+' '+ano;
+  var s1=document.getElementById('dp-inline-s1');
+  if(s1){
+    s1.innerHTML=
+      '<div style="background:#fff;border:.5px solid #d3d1c7;border-radius:8px;overflow:hidden">'+
+      '<div style="background:#185FA5;color:#fff;padding:6px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">% de conformidade acumulado — '+ano+'</div>'+
+      '<div style="padding:8px 12px">'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'+
+          '<div style="background:#E6F1FB;border-radius:6px;padding:8px 14px"><div style="font-size:10px;color:#0C447C;font-weight:700;margin-bottom:2px">Média acumulada — Armazém</div>'+
+          '<div style="font-size:26px;font-weight:700;color:#0C447C;line-height:1">'+(armAvg!==null?armAvg.toFixed(1).replace('.',',')+'%':'—')+'</div>'+
+          '<div style="font-size:10px;color:#185FA5;margin-top:2px">'+periodo+'</div></div>'+
+          '<div style="background:#FAEEDA;border-radius:6px;padding:8px 14px"><div style="font-size:10px;color:#633806;font-weight:700;margin-bottom:2px">Média acumulada — Produção</div>'+
+          '<div style="font-size:26px;font-weight:700;color:#633806;line-height:1">'+(prodAvg!==null?prodAvg.toFixed(1).replace('.',',')+'%':'—')+'</div>'+
+          '<div style="font-size:10px;color:#854F0B;margin-top:2px">'+periodo+'</div></div>'+
+        '</div>'+
+        '<div style="display:flex;gap:12px;margin-bottom:6px">'+
+          '<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:#5F5E5A"><span style="width:10px;height:10px;border-radius:2px;background:#185FA5;display:inline-block"></span>Armazém</span>'+
+          '<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:#5F5E5A"><span style="width:10px;height:10px;border-radius:2px;background:#ED7D31;display:inline-block"></span>Produção</span>'+
+          '<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:#5F5E5A"><span style="width:18px;height:2px;border-top:2px dashed #A32D2D;display:inline-block"></span>Meta 85%</span>'+
+        '</div>'+
+        '<div style="position:relative;height:220px"><canvas id="dp-inline-conf-chart" role="img" aria-label="Conformidade acumulada">.</canvas></div>'+
+      '</div></div>';
+    var allVals=armData.concat(prodData).filter(function(v){return v!==null;});
+    var yMin=allVals.length?Math.max(0,Math.floor((Math.min.apply(null,allVals)-8)/5)*5):60;
+    var dlPlugin={id:'dpDlInline',afterDatasetsDraw:function(chart){
+      var ctx=chart.ctx;var allPts=[];
+      chart.data.datasets.forEach(function(ds,i){
+        if(ds.label==='Meta')return;
+        var meta=chart.getDatasetMeta(i);if(meta.hidden)return;
+        meta.data.forEach(function(pt,j){
+          var val=ds.data[j];if(val===null||val===undefined)return;
+          allPts.push({x:pt.x,y:pt.y,val:val,color:ds.borderColor});
+        });
+      });
+      allPts.forEach(function(p,pi){
+        var offsetY=-7;
+        allPts.forEach(function(q,qi){
+          if(pi===qi)return;
+          if(Math.abs(p.x-q.x)<30&&Math.abs(p.y-q.y)<14){offsetY=p.y>q.y?8:-20;}
+        });
+        ctx.save();ctx.font='700 9px system-ui';ctx.fillStyle=p.color;
+        ctx.textAlign='center';ctx.textBaseline='bottom';
+        ctx.fillText(Number(p.val).toFixed(1)+'%',p.x,p.y+offsetY);ctx.restore();
+      });
+    }};
+    setTimeout(function(){
+      var cc=document.getElementById('dp-inline-conf-chart');
+      if(!cc)return;
+      if(window._dpInlineChart){try{window._dpInlineChart.destroy();}catch(e){}}
+      window._dpInlineChart=new Chart(cc,{type:'line',plugins:[dlPlugin],data:{labels:mesLabels,datasets:[
+        {label:'Meta',data:months.map(function(){return 85;}),borderColor:'#A32D2D',borderWidth:1,borderDash:[5,4],pointRadius:0,fill:false,order:0},
+        {label:'Armazém',data:armData,borderColor:'#185FA5',backgroundColor:'transparent',fill:false,pointRadius:5,pointBackgroundColor:'#185FA5',tension:.3,borderWidth:2.5,spanGaps:false,order:1},
+        {label:'Produção',data:prodData,borderColor:'#ED7D31',backgroundColor:'transparent',fill:false,pointRadius:5,pointBackgroundColor:'#ED7D31',tension:.3,borderWidth:2.5,spanGaps:false,order:1}
+      ]},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:false}},
+        scales:{y:{min:yMin,max:105,ticks:{callback:function(v){return v+'%'},font:{size:9}},grid:{color:'rgba(0,0,0,.07)'}},x:{ticks:{font:{size:9},autoSkip:false,maxRotation:0},grid:{display:false}}}}});
+    },50);
+  }
+};
+document.addEventListener('DOMContentLoaded',function(){
+  var btnLogin=document.querySelector('#login-screen button[onclick*="doLogin"]');
+  if(btnLogin){
+    btnLogin.addEventListener('click',function(e){
+      var u=document.getElementById('lu')?document.getElementById('lu').value.trim():'';
+      var p=document.getElementById('lp')?document.getElementById('lp').value:'';
+      var f=DB&&DB.usuarios&&DB.usuarios.find(function(x){return x.login===u&&x.senha===p;});
+      if(f&&f.perfil==='producao'){
+        e.stopImmediatePropagation();
+        SESSION=f;
+        var lerr=document.getElementById('lerr');if(lerr)lerr.style.display='none';
+        showDashProd();
+      }
+    },true);
+  }
+  var inputs=['lu','lp'];
+  inputs.forEach(function(id){
+    var el=document.getElementById(id);
+    if(el){
+      el.addEventListener('keydown',function(e){
+        if(e.key!=='Enter')return;
+        var u=document.getElementById('lu')?document.getElementById('lu').value.trim():'';
+        var p=document.getElementById('lp')?document.getElementById('lp').value:'';
+        var f=DB&&DB.usuarios&&DB.usuarios.find(function(x){return x.login===u&&x.senha===p;});
+        if(f&&f.perfil==='producao'){
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          SESSION=f;
+          var lerr=document.getElementById('lerr');if(lerr)lerr.style.display='none';
+          showDashProd();
+        }
+      },true);
+    }
+  });
+});
+})();
+/* ===== FIM DASHBOARD PRODUCAO ===== */
+
 </script>
+
+<script>
+/* ===== GERENCIAMENTO DE UNIDADE - BLOCO DEFINITIVO =====
+   Regras:
+   1. window.CQ_UNIT é a ÚNICA fonte de verdade da unidade ativa
+   2. Seletor fica fixo na sidebar, abaixo do usuário
+   3. Ao trocar de unidade, DB.pontos e DB.coletas são re-filtrados na fonte
+   4. Nenhum outro código pode mudar CQ_UNIT (só o seletor da sidebar)
+   5. Persiste em localStorage entre sessões
+   ============================================================ */
+(function(){
+  'use strict';
+
+  var LS_KEY = 'cqUnitFinal_v1';
+  var DB_ALL_PONTOS  = null; // cópia completa de todos os pontos
+  var DB_ALL_COLETAS = null; // cópia completa de todas as coletas
+
+  /* ── Helpers de storage ── */
+  function lsSave(id){ try{ localStorage.setItem(LS_KEY, String(id)); }catch(e){} }
+  function lsLoad(){ try{ var v=localStorage.getItem(LS_KEY); return v?parseInt(v,10):null; }catch(e){ return null; } }
+
+  /* ── Retorna ids de unidades permitidas ao usuário logado ── */
+  function allowedIds(){
+    return (window.SESSION && Array.isArray(SESSION.unidades)) ? SESSION.unidades.slice() : [];
+  }
+  function isAllowed(id){
+    return allowedIds().indexOf(parseInt(id,10)) >= 0;
+  }
+
+  /* ── Determina a unidade ativa (nunca muda sozinha) ── */
+  function getUnit(){
+    if(window.CQ_UNIT && isAllowed(window.CQ_UNIT)) return window.CQ_UNIT;
+    var saved = lsLoad();
+    if(saved && isAllowed(saved)){ window.CQ_UNIT = saved; return saved; }
+    var a = allowedIds();
+    var u = a.length ? a[0] : 1;
+    window.CQ_UNIT = u;
+    return u;
+  }
+
+  /* ── Define a unidade ativa e filtra o DB na fonte ── */
+  function setUnit(id){
+    id = parseInt(id, 10);
+    if(!isAllowed(id)){
+      var a = allowedIds();
+      id = a.length ? a[0] : 1;
+    }
+    window.CQ_UNIT = id;
+    lsSave(id);
+    filterDB(id);
+    updateSbLabel(id);
+    syncSelect(id);
+    return id;
+  }
+
+  /* ── Sincroniza DB_ALL_COLETAS com quaisquer novas coletas em DB.coletas ── */
+  function syncAllColetas(){
+    if(!DB_ALL_COLETAS) return;
+    (DB.coletas || []).forEach(function(c){
+      var exists = DB_ALL_COLETAS.some(function(x){ return x.id === c.id; });
+      if(!exists) DB_ALL_COLETAS.push(c);
+      else {
+        // atualiza se foi editada
+        var idx = DB_ALL_COLETAS.findIndex(function(x){ return x.id === c.id; });
+        if(idx >= 0) DB_ALL_COLETAS[idx] = c;
+      }
+    });
+  }
+
+  /* ── Sincroniza DB_ALL_PONTOS com quaisquer novos pontos ── */
+  function syncAllPontos(){
+    if(!DB_ALL_PONTOS) return;
+    (DB.pontos || []).forEach(function(p){
+      var exists = DB_ALL_PONTOS.some(function(x){ return x.id === p.id; });
+      if(!exists) DB_ALL_PONTOS.push(p);
+      else {
+        var idx = DB_ALL_PONTOS.findIndex(function(x){ return x.id === p.id; });
+        if(idx >= 0) DB_ALL_PONTOS[idx] = p;
+      }
+    });
+  }
+
+  /* ── Filtra DB.pontos e DB.coletas pela unidade ── */
+  function filterDB(uid){
+    // Antes de filtrar, absorve novos itens que foram adicionados desde o último filtro
+    if(DB_ALL_PONTOS)  syncAllPontos();
+    if(DB_ALL_COLETAS) syncAllColetas();
+
+    if(!DB_ALL_PONTOS)  DB_ALL_PONTOS  = (DB.pontos  || []).slice();
+    if(!DB_ALL_COLETAS) DB_ALL_COLETAS = (DB.coletas || []).slice();
+
+    DB.pontos  = DB_ALL_PONTOS.filter(function(p){
+      return !p.unidadeId || p.unidadeId === uid;
+    });
+    var pids = DB.pontos.map(function(p){ return p.id; });
+    DB.coletas = DB_ALL_COLETAS.filter(function(c){
+      if(c.unidadeId) return c.unidadeId === uid;
+      return pids.indexOf(c.pontoId) >= 0;
+    });
+  }
+
+  /* ── Atualiza o label "sb-un" na sidebar ── */
+  function updateSbLabel(uid){
+    var u = (DB.unidades||[]).find(function(x){ return x.id===uid; });
+    var el = document.getElementById('sb-un');
+    if(el && u) el.textContent = u.nome;
+  }
+
+  /* ── Mantém o select sincronizado ── */
+  function syncSelect(uid){
+    var sel = document.getElementById('cq-sb-unit-sel');
+    if(sel) sel.value = String(uid);
+  }
+
+  /* ── Renderiza o seletor na sidebar ── */
+  function renderSbSelector(){
+    var box = document.getElementById('cq-sb-unit-box');
+    var sel = document.getElementById('cq-sb-unit-sel');
+    if(!box || !sel) return;
+
+    var allowed = allowedIds();
+    if(allowed.length < 2){
+      box.style.display = 'none';
+      return;
+    }
+    box.style.display = 'block';
+    var uid = getUnit();
+    sel.innerHTML = allowed.map(function(id){
+      var u = (DB.unidades||[]).find(function(x){ return x.id===id; });
+      var label = u ? (u.cod + ' — ' + u.nome) : String(id);
+      return '<option value="'+id+'"'+(id===uid?' selected':'')+'>'+label+'</option>';
+    }).join('');
+    sel.value = String(uid);
+  }
+
+  /* ── Expõe publicamente ── */
+  window.cqActiveUnitId      = getUnit;
+  window.cqSyncAllColetas    = syncAllColetas;
+  window.cqSyncAllPontos     = syncAllPontos;
+  window.cqSbUnitInit        = function(){ renderSbSelector(); setUnit(getUnit()); };
+  window.cqRenderUnitSelector= function(){ renderSbSelector(); };
+
+  /* ── Evento: usuário troca a unidade no select ── */
+  document.addEventListener('DOMContentLoaded', function(){
+    var sel = document.getElementById('cq-sb-unit-sel');
+    if(sel){
+      sel.addEventListener('change', function(){
+        var id = parseInt(sel.value, 10);
+        setUnit(id);
+        // Re-renderiza a página ativa
+        var pg = document.querySelector('.page.on');
+        if(pg && window.renders){
+          var pid = pg.id.replace('page-','');
+          if(typeof renders[pid]==='function') renders[pid]();
+        }
+      });
+    }
+  });
+
+  /* ── Hook no doLogin: inicializa unidade após login ── */
+  document.addEventListener('DOMContentLoaded', function(){
+
+    /* Patch doLogin */
+    var _login = window.doLogin;
+    window.doLogin = function(){
+      _login.apply(this, arguments);
+      // Após login, SESSION está definido — inicializa unidade
+      setTimeout(function(){
+        // Guardar cópia do DB completo antes do primeiro filtro
+        if(!DB_ALL_PONTOS)  DB_ALL_PONTOS  = (DB.pontos  || []).slice();
+        if(!DB_ALL_COLETAS) DB_ALL_COLETAS = (DB.coletas || []).slice();
+        renderSbSelector();
+        setUnit(getUnit());
+        // Re-renderiza página ativa
+        var pg = document.querySelector('.page.on');
+        if(pg && window.renders){
+          var pid = pg.id.replace('page-','');
+          if(typeof renders[pid]==='function') renders[pid]();
+        }
+      }, 50);
+    };
+
+    /* Patch nav: nunca deixa a unidade ser resetada ao trocar de aba */
+    var _nav = window.nav;
+    window.nav = function(p, el){
+      var savedUnit = window.CQ_UNIT;
+      _nav.apply(this, arguments);
+      // Restaura imediatamente se algo tentou mudar
+      if(savedUnit && window.CQ_UNIT !== savedUnit){
+        window.CQ_UNIT = savedUnit;
+        filterDB(savedUnit);
+      }
+      updateSbLabel(window.CQ_UNIT || getUnit());
+    };
+
+  });
+
+  /* ── Guarda cópia do DB_ALL quando o script carrega (pontos já foram populados) ── */
+  /* Fazemos isso no DOMContentLoaded para garantir que cqCadastroOficial já rodou */
+  document.addEventListener('DOMContentLoaded', function(){
+    if(!DB_ALL_PONTOS && DB.pontos && DB.pontos.length){
+      DB_ALL_PONTOS  = DB.pontos.slice();
+      DB_ALL_COLETAS = (DB.coletas||[]).slice();
+    }
+  });
+
+})();
+/* ===== FIM GERENCIAMENTO DE UNIDADE ===== */
+</script>
+
 </body>
 </html>
