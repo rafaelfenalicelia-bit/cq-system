@@ -17,7 +17,7 @@ app.get('/api/health', (req, res) => res.json({ ok: true }));
 app.get('/api/db', async (req, res) => {
   try {
     const [config, unidades, usuarios, analises, fornecedores,
-           pontos, pontoAnalises, coletas, laudoSeq] = await Promise.all([
+           pontos, pontoAnalises, coletas, laudoSeq, maxColetaIdRes] = await Promise.all([
       pool.query('SELECT * FROM config LIMIT 1'),
       pool.query('SELECT * FROM unidades ORDER BY id'),
       pool.query('SELECT * FROM usuarios ORDER BY id'),
@@ -25,17 +25,16 @@ app.get('/api/db', async (req, res) => {
       pool.query('SELECT * FROM fornecedores ORDER BY id'),
       pool.query('SELECT * FROM pontos ORDER BY id'),
       pool.query('SELECT * FROM ponto_analises ORDER BY id'),
-      pool.query('SELECT * FROM coletas ORDER BY id'),
-      pool.query('SELECT * FROM laudo_seq')
+      pool.query('SELECT * FROM coletas WHERE excluida IS NOT TRUE ORDER BY id'),
+      pool.query('SELECT * FROM laudo_seq'),
+      pool.query('SELECT COALESCE(MAX(id),0) AS max_id FROM coletas')
     ]);
 
     const cfg = config.rows[0] || {};
     const seqObj = {};
     laudoSeq.rows.forEach(r => { seqObj[r.chave] = r.valor; });
 
-    const maxId = coletas.rows.length
-      ? Math.max(...coletas.rows.map(c => c.id))
-      : 0;
+    const maxId = parseInt(maxColetaIdRes.rows[0].max_id, 10) || 0;
 
     res.json({
       config: {
@@ -99,13 +98,13 @@ app.get('/api/db', async (req, res) => {
 app.post('/api/coletas', async (req, res) => {
   const c = req.body;
   try {
-    const existing = await pool.query('SELECT id FROM coletas WHERE id = $1', [c.id]);
+    const existing = await pool.query('SELECT id FROM coletas WHERE id = $1 AND excluida IS NOT TRUE', [c.id]);
     if (existing.rows.length) {
       await pool.query(`
         UPDATE coletas SET laudo_num=$1, data=$2, hora=$3, hora_seg=$4, segundos=$5, tipo=$6, lote=$7,
           validade=$8, forn_id=$9, resp=$10, observacao=$11, resultados=$12, fabricante=$13,
           excluir_indicadores=$14, motivo_exclusao=$15, excluido_por=$16, excluido_em=$17
-        WHERE id=$18`,
+        WHERE id=$18 AND excluida IS NOT TRUE`,
         [c.laudoNum, c.data, c.hora, c.horaSeg || null, c.segundos || 0, c.tipo, c.lote, c.validade, c.fornId,
          c.resp, c.observacao, JSON.stringify(c.resultados), c.fabricante || null,
          c.excluirIndicadores, c.motivoExclusaoIndicadores,
@@ -128,6 +127,56 @@ app.post('/api/coletas', async (req, res) => {
         ON CONFLICT (chave) DO UPDATE SET valor = GREATEST(laudo_seq.valor, $1)`, [num]);
     }
     res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── EXCLUIR LAUDO (soft delete com auditoria) ──────────────
+app.post('/api/coletas/:id/excluir', async (req, res) => {
+  const { id } = req.params;
+  const { motivo, excluidoPor } = req.body;
+  try {
+    if (!motivo || !motivo.trim()) {
+      return res.status(400).json({ error: 'Motivo da exclusão é obrigatório.' });
+    }
+    const r = await pool.query(
+      `UPDATE coletas SET excluida=true, motivo_exclusao_laudo=$1, excluido_laudo_por=$2, excluido_laudo_em=NOW()
+       WHERE id=$3 AND excluida IS NOT TRUE RETURNING id`,
+      [motivo.trim(), excluidoPor || 'Desconhecido', id]
+    );
+    if (!r.rows.length) {
+      return res.status(404).json({ error: 'Laudo não encontrado ou já excluído.' });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── LISTAR HISTÓRICO DE LAUDOS EXCLUÍDOS ───────────────────
+app.get('/api/coletas/excluidas', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT c.*, p.nome AS ponto_nome, p.num AS ponto_num, u.nome AS unidade_nome
+       FROM coletas c
+       LEFT JOIN pontos p ON p.id = c.ponto_id
+       LEFT JOIN unidades u ON u.id = c.unidade_id
+       WHERE c.excluida IS TRUE
+       ORDER BY c.excluido_laudo_em DESC`
+    );
+    res.json(r.rows.map(c => ({
+      id: c.id, laudoNum: c.laudo_num, pontoId: c.ponto_id,
+      pontoNome: c.ponto_nome, pontoNum: c.ponto_num, unidadeNome: c.unidade_nome,
+      data: c.data ? c.data.toISOString().slice(0, 10) : '',
+      hora: c.hora ? c.hora.slice(0, 5) : '',
+      resp: c.resp, observacao: c.observacao,
+      motivoExclusaoLaudo: c.motivo_exclusao_laudo,
+      excluidoLaudoPor: c.excluido_laudo_por,
+      excluidoLaudoEm: c.excluido_laudo_em
+    })));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -157,6 +206,7 @@ app.post('/api/pontos', async (req, res) => {
   const p = req.body;
   try {
     let pid = p.id;
+    // Se vier so com analises (chamada parcial de savePon), nao recria o ponto
     const isPartialUpdate = p.analises && !p.num && !p.nome;
     if (!isPartialUpdate) {
       const exists = pid ? await pool.query('SELECT id FROM pontos WHERE id=$1', [pid]) : { rows: [] };
