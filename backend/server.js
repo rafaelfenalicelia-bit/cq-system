@@ -69,10 +69,11 @@ app.get('/api/db', async (req, res) => {
       coletas: coletas.rows.map(c => ({
         id: c.id, laudoNum: c.laudo_num, unidadeId: c.unidade_id,
         pontoId: c.ponto_id, data: c.data ? c.data.toISOString().slice(0, 10) : '',
-        hora: c.hora ? c.hora.slice(0, 5) : '', tipo: c.tipo,
+        hora: c.hora ? c.hora.slice(0, 5) : '', horaSeg: c.hora_seg || '',
+        segundos: c.segundos || 0, tipo: c.tipo,
         lote: c.lote, validade: c.validade, fornId: c.forn_id,
         resp: c.resp, userId: c.user_id, observacao: c.observacao,
-        resultados: c.resultados || [],
+        resultados: c.resultados || [], fabricante: c.fabricante || '',
         excluirIndicadores: c.excluir_indicadores,
         motivoExclusaoIndicadores: c.motivo_exclusao,
         excluidoIndicadoresPor: c.excluido_por,
@@ -101,23 +102,23 @@ app.post('/api/coletas', async (req, res) => {
     const existing = await pool.query('SELECT id FROM coletas WHERE id = $1', [c.id]);
     if (existing.rows.length) {
       await pool.query(`
-        UPDATE coletas SET laudo_num=$1, data=$2, hora=$3, tipo=$4, lote=$5,
-          validade=$6, forn_id=$7, resp=$8, observacao=$9, resultados=$10,
-          excluir_indicadores=$11, motivo_exclusao=$12, excluido_por=$13, excluido_em=$14
-        WHERE id=$15`,
-        [c.laudoNum, c.data, c.hora, c.tipo, c.lote, c.validade, c.fornId,
-         c.resp, c.observacao, JSON.stringify(c.resultados),
+        UPDATE coletas SET laudo_num=$1, data=$2, hora=$3, hora_seg=$4, segundos=$5, tipo=$6, lote=$7,
+          validade=$8, forn_id=$9, resp=$10, observacao=$11, resultados=$12, fabricante=$13,
+          excluir_indicadores=$14, motivo_exclusao=$15, excluido_por=$16, excluido_em=$17
+        WHERE id=$18`,
+        [c.laudoNum, c.data, c.hora, c.horaSeg || null, c.segundos || 0, c.tipo, c.lote, c.validade, c.fornId,
+         c.resp, c.observacao, JSON.stringify(c.resultados), c.fabricante || null,
          c.excluirIndicadores, c.motivoExclusaoIndicadores,
          c.excluidoIndicadoresPor, c.excluidoIndicadoresEm, c.id]);
     } else {
       await pool.query(`
-        INSERT INTO coletas (id, laudo_num, unidade_id, ponto_id, data, hora, tipo,
-          lote, validade, forn_id, resp, user_id, observacao, resultados,
+        INSERT INTO coletas (id, laudo_num, unidade_id, ponto_id, data, hora, hora_seg, segundos, tipo,
+          lote, validade, forn_id, resp, user_id, observacao, resultados, fabricante,
           excluir_indicadores, motivo_exclusao, excluido_por, excluido_em)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
-        [c.id, c.laudoNum, c.unidadeId, c.pontoId, c.data, c.hora, c.tipo,
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+        [c.id, c.laudoNum, c.unidadeId, c.pontoId, c.data, c.hora, c.horaSeg || null, c.segundos || 0, c.tipo,
          c.lote, c.validade, c.fornId, c.resp, c.userId, c.observacao,
-         JSON.stringify(c.resultados), c.excluirIndicadores,
+         JSON.stringify(c.resultados), c.fabricante || null, c.excluirIndicadores,
          c.motivoExclusaoIndicadores, c.excluidoIndicadoresPor, c.excluidoIndicadoresEm]);
     }
     const num = parseInt(c.laudoNum) || 0;
@@ -155,17 +156,20 @@ app.post('/api/analises', async (req, res) => {
 app.post('/api/pontos', async (req, res) => {
   const p = req.body;
   try {
-    let pid;
-    if (p.id) {
-      await pool.query(
-        'UPDATE pontos SET num=$1, nome=$2, req=$3, vr=$4, vr_group=$5, ativo=$6, data_desativacao=$7 WHERE id=$8',
-        [p.num, p.nome, JSON.stringify(p.req), p.vr, p.vrGroup, p.ativo, p.dataDesativacao, p.id]);
-      pid = p.id;
-    } else {
-      const r = await pool.query(
-        'INSERT INTO pontos (num, nome, req, vr, vr_group, ativo) VALUES ($1,$2,$3,$4,$5,true) RETURNING id',
-        [p.num, p.nome, JSON.stringify(p.req), p.vr, p.vrGroup]);
-      pid = r.rows[0].id;
+    let pid = p.id;
+    const isPartialUpdate = p.analises && !p.num && !p.nome;
+    if (!isPartialUpdate) {
+      const exists = pid ? await pool.query('SELECT id FROM pontos WHERE id=$1', [pid]) : { rows: [] };
+      if (exists.rows.length) {
+        await pool.query(
+          'UPDATE pontos SET num=$1, nome=$2, req=$3, vr=$4, vr_group=$5 WHERE id=$6',
+          [p.num, p.nome, JSON.stringify(p.req), p.vr, p.vrGroup, pid]);
+      } else {
+        const r = await pool.query(
+          'INSERT INTO pontos (id, num, nome, req, vr, vr_group, ativo) VALUES ($1,$2,$3,$4,$5,$6,true) RETURNING id',
+          [pid, p.num, p.nome, JSON.stringify(p.req), p.vr, p.vrGroup]);
+        pid = r.rows[0].id;
+      }
     }
     if (p.analises && p.analises.length) {
       for (const pa of p.analises) {
@@ -184,6 +188,7 @@ app.post('/api/pontos', async (req, res) => {
     }
     res.json({ ok: true, id: pid });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
