@@ -1033,7 +1033,6 @@ function savePon(){
   var req={lote:document.getElementById('req-l').checked,validade:document.getElementById('req-v').checked,forn:document.getElementById('req-f').checked};
   var pid=DB.nextIds.ponto++;
   DB.pontos.push({id:pid,num:num,nome:nome,req:req,vr:vrg!=='',vrGroup:vrg||null,ativo:true,dataDesativacao:null});
-  apiPost('/api/pontos', {id:pid,num:num,nome:nome,req:req,vr:vrg!=='',vrGroup:vrg||null});
   DB.analises.filter(function(a){return a.ativo!==false;}).forEach(function(a){
     var cb=document.getElementById('ac-cb-'+a.id);
     if(!cb||!cb.checked)return;
@@ -1044,7 +1043,6 @@ function savePon(){
     var maxV=maxEl.value!==''?parseFloat(maxEl.value):null;
     var peso=pesoEl.value!==''?parseFloat(pesoEl.value):0;
     DB.pontoAnalises.push({pontoId:pid,analiseId:a.id,min:minV,max:maxV,vr:document.getElementById('ac-vr-'+a.id).checked,vrPeso:peso,padraoHistory:[{vigencia:'2026-01-01',min:minV,max:maxV}]});
-    apiPost('/api/pontos', {id:pid, analises:[{analiseId:a.id,min:minV,max:maxV,vr:document.getElementById('ac-vr-'+a.id).checked,vrPeso:peso,padraoHistory:[{vigencia:'2026-01-01',min:minV,max:maxV}]}]});
   });
   closeM('m-pon');
   renders.pon();
@@ -1072,7 +1070,6 @@ function saveAna(){
   var un=document.getElementById('ma-un').value.trim();
   if(!nome||!un)return alert('Preencha nome e unidade.');
   DB.analises.push({id:DB.nextIds.analise++,nome:nome,unidade:un,ativo:true,dataDesativacao:null});
-  apiPost('/api/analises', {nome:nome, unidade:un});
   closeM('m-ana');renders.ana();
 }
 function saveFor(){
@@ -4555,6 +4552,7 @@ function cqVRLabelPlugin(){
     var tipo=document.getElementById('ma-un').value.trim();
     if(!nome||!tipo)return alert('Preencha nome e tipo de resultado.');
     DB.analises.push({id:DB.nextIds.analise++,nome:nome,unidade:'',tipoResultado:tipo,ativo:true,dataDesativacao:null});
+    apiPost('/api/analises', {nome:nome, unidade:tipo});
     closeM('m-ana');renders.ana();
   };
 
@@ -7009,10 +7007,15 @@ function renderVRRelatorio(){
     var num=parseInt(el('mp-n').value,10), nome=(el('mp-nm').value||'').trim(); if(!num||!nome)return alert('Preencha número e nome.');
     var vrg=el('mp-vrg').value; var req={lote:el('req-l').checked,validade:el('req-v').checked,forn:el('req-f').checked};
     var pid=DB.nextIds.ponto++; DB.pontos.push({id:pid,num:num,nome:nome,req:req,vr:vrg!=='',vrGroup:vrg||null,ativo:true,dataDesativacao:null});
+    apiPost('/api/pontos', {id:pid,num:num,nome:nome,req:req,vr:vrg!=='',vrGroup:vrg||null});
+    var pontoAnalisesParaApi=[];
     (DB.analises||[]).filter(function(a){return a.ativo!==false;}).forEach(function(a){
       if(!(el('ac-cb-'+a.id)||{}).checked)return;
-      DB.pontoAnalises.push({pontoId:pid,analiseId:a.id,min:null,max:null,vr:false,vrPeso:0,padraoHistory:[],ativo:true,formulaId:parseInt((el('ac-formula-'+a.id)||{}).value,10)||null,formulaBaseAnaliseId:parseInt((el('ac-base-'+a.id)||{}).value,10)||null,operObs:(el('ac-obs-'+a.id)||{}).value||''});
+      var pa={pontoId:pid,analiseId:a.id,min:null,max:null,vr:false,vrPeso:0,padraoHistory:[],ativo:true,formulaId:parseInt((el('ac-formula-'+a.id)||{}).value,10)||null,formulaBaseAnaliseId:parseInt((el('ac-base-'+a.id)||{}).value,10)||null,operObs:(el('ac-obs-'+a.id)||{}).value||''};
+      DB.pontoAnalises.push(pa);
+      pontoAnalisesParaApi.push({analiseId:a.id,min:null,max:null,vr:false,vrPeso:0,padraoHistory:[]});
     });
+    if(pontoAnalisesParaApi.length)apiPost('/api/pontos', {id:pid, analises:pontoAnalisesParaApi});
     closeM('m-pon'); if(renders&&renders.pon)renders.pon();
   };
 
